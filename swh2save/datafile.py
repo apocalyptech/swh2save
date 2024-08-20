@@ -22,15 +22,15 @@ import struct
 
 class Datafile:
 
-    def __init__(self, filename, do_write=False, encoding='utf-8', endian='<'):
+    def __init__(self, filename, do_write=False, encoding='latin1', endian='<'):
         """
-        We're essentially hardcoding utf-8 string encoding and little-endianness,
+        We're essentially hardcoding latin1 string encoding and little-endianness,
         though those can technically be overridden.  I suspect that the strings
-        we read in the file are just plain ol' ASCII, and `latin1` for encoding
-        might be more appropriate.  I guess I'm sticking with utf-8 for now, though.
+        we read in the file are just plain ol' ASCII.  Looping through the various
+        top-level names in Definitions/*.xml, I'm pretty confident we'll be fine
+        with just latin1.
         """
         self.filename = filename
-        # TODO: would be nice to figure out what the proper encoding actually is
         self.encoding = encoding
         self.endian = endian
         self.struct_uint8 = f'{self.endian}B'
@@ -115,12 +115,13 @@ class Datafile:
         for it anyway (though throw an error if found, because I'd like to
         confirm).
 
-        We're actually using the "string length" as a byte length, and then
-        interpreting the bytes to utf-8.  That may or may not be appropriate;
-        I suspect that the strings we read from here might all be ASCII.  If
-        I later discover that latin1 is a more-appropriate encoding, I could
-        be a little less careful about some of that (like how the
-        `string_registry_read` dict currently stores a tuple).
+        We've moved to using latin1 for string encoding, which means the
+        byte length will be identical to the string length.  If we ever end
+        up needing to use something fancier like utf-8, we may need to keep
+        track of byte-vs-string-length differences.  See the state of this
+        function as of here, for an example which should work:
+
+            https://github.com/apocalyptech/swh2save/blob/cadc382be834a68ef741af345c2b589cbafe1cc4/swh2save/datafile.py#L103
         """
         initial_loc = self.tell()
         strlen = self.read_varint()
@@ -131,26 +132,19 @@ class Datafile:
         if second_val == 0:
             string_loc = self.tell()
             data = self.read(strlen)
-            try:
-                decoded = data.decode(self.encoding)
-                # Storing a tuple here so that we can compare the binary string length properly
-                # later on.  I suspect that there's never a case where a reference would point
-                # to a *substring*, but we're checking for that case anyway (though we
-                # RuntimeError at the moment if we *do* ever find a substring being attempted).
-                # If the proper text encoding turns out to be latin1, we could do without the tuple.
-                self.string_registry_read[string_loc] = (data, decoded)
-                return decoded
-            except UnicodeDecodeError as e:
-                raise RuntimeError(f'Unable to decode string: {data} -> {e}')
+            decoded = data.decode(self.encoding)
+            self.string_registry_read[string_loc] = decoded
+            return decoded
         else:
             target_loc = second_val_loc-second_val
             if target_loc in self.string_registry_read:
-                destination_data, destination_string = self.string_registry_read[target_loc]
-                if len(destination_data) != strlen:
-                    # As mentioned above, I don't *think* that this will ever get hit, but
-                    # we're checking for it anyway 'cause I'd want to check it out, if it
-                    # ever does happen.
-                    raise RuntimeError(f"String redirect length at 0x{initial_loc:X} ({strlen}) doesn't match cached length ({len(destination_data)})")
+                destination_string = self.string_registry_read[target_loc]
+                if len(destination_string) != strlen:
+                    # I don't believe there will ever be a case where the string reference
+                    # requests a "substring" of the original string, but we're checking for
+                    # the length here, regardless.  Raising an exception because I'd want
+                    # to check it out to make sure that the real problem wasn't something else.
+                    raise RuntimeError(f"String redirect length at 0x{initial_loc:X} ({strlen}) doesn't match cached length ({len(destination_string)})")
                 return destination_string
             else:
                 raise RuntimeError(f'Computed string redirect at 0x{second_val_loc:X} (-> 0x{target_loc:X}) not found')
