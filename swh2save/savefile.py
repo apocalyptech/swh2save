@@ -389,6 +389,28 @@ class Inventory(Chunk):
         odf.write_string(self.leeway_hat)
 
 
+#class Loadout(Chunk):
+#    """
+#    `CrLo` chunk -- Character Loadout?  Possibly stretching a bit
+#    with the name there.
+#    """
+#
+#    def __init__(self, df):
+#        super().__init__(df, 'CrLo')
+#
+#        self.unknown_1 = self.df.read_uint8()
+#        self.name = self.df.read_string()
+#
+#        import sys
+#        sys.exit(0)
+#
+#
+#    def _write_to(self, odf):
+#
+#        odf.write_uint8(self.unknown_1)
+#        odf.write_string(self.name)
+
+
 class Savefile(Datafile):
 
     # Maximum savefile version that we can parse
@@ -435,6 +457,12 @@ class Savefile(Datafile):
 
         # Inventory
         self.inventory = Inventory(self)
+
+        # Character Loadout
+        #self.loadouts = []
+        #num_chars = self.read_uint8()
+        #for _ in range(num_chars):
+        #    self.loadouts.append(Loadout(self))
 
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
