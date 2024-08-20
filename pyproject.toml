@@ -1,0 +1,38 @@
+[project]
+name = "swh2save"
+description = "SteamWorld Heist II Savegame Editor"
+readme = "README.md"
+authors = [
+    {name = "CJ Kucera", email = "cj@apocalyptech.com"},
+]
+license.file = "LICENSE.txt"
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Natural Language :: English",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+# Honestly not sure what the minimum is, at the moment
+#requires-python = ">= 3.10"
+dependencies = []
+dynamic = ["version"]
+keywords = ["steamworld", "heist", "heist 2", "swh2", "steamworld heist 2", "save editor"]
+
+[project.urls]
+Repository = "https://github.com/apocalyptech/swh2save"
+Issues = "https://github.com/apocalyptech/swh2save/issues"
+
+[project.scripts]
+heist2save = "swh2save.cli:main"
+
+[tool.setuptools.dynamic]
+version.attr = "swh2save.__version__"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
