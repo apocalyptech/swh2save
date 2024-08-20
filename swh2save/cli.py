@@ -132,6 +132,11 @@ def main():
             help='Show extra information when listing savegame contents',
             )
 
+    parser.add_argument('-d', '--debug',
+            action='store_true',
+            help='Extra debugging info (at the moment just some extra data dumps while --check is active)',
+            )
+
     parser.add_argument('-1', '--single_column',
             dest='single_column',
             action='store_true',
@@ -209,6 +214,30 @@ def main():
         if args.verbose:
             print_columns(save.inventory.hats, columns=columns)
 
+    elif args.check:
+
+        if args.debug:
+
+            # Print the next bunch of data we haven't parsed yet.
+            per_line = 16
+            lines = 5
+            printable_chars = b'0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ '
+            for line in range(lines):
+                start = line*per_line
+                print('0x{:08X}  '.format(save.remaining_loc+start), end='')
+                for (idx, byte) in enumerate(save.remaining[start:start+per_line]):
+                    print('{:02X}'.format(byte), end='')
+                    print(' ', end='')
+                    if idx % 4 == 3:
+                        print(' ', end='')
+                print('| ', end='')
+                for byte in save.remaining[start:start+per_line]:
+                    if byte in printable_chars:
+                        print(chr(byte), end='')
+                    else:
+                        print('.', end='')
+                print('')
+
     elif args.output:
 
         if not args.force and os.path.exists(args.output):
@@ -255,6 +284,9 @@ def main():
         #        print(f'Unlocking {len(needed_hats)} hats')
         #        save.inventory.hats.extend(sorted(list(needed_hats)))
         #        do_save = True
+
+        save.inventory.hats = ['hat_cyclop', 'hat_piper']
+        do_save = True
 
         if do_save:
             save.save_to(args.output)

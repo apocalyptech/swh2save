@@ -345,6 +345,15 @@ class Inventory(Chunk):
             self.hats.append(self.df.read_string())
             #print(f' - Got hat: {self.hats[-1]} ({len(self.hats)}/{num_hats})')
 
+        # New hats
+        self.new_hats = []
+        num_new_hats = self.df.read_varint()
+        for _ in range(num_new_hats):
+            self.new_hats.append(self.df.read_string())
+
+        # Captain Leeway's hat
+        self.leeway_hat = self.df.read_string()
+
 
     def _write_to(self, odf):
 
@@ -370,6 +379,14 @@ class Inventory(Chunk):
         odf.write_varint(len(self.hats))
         for hat in self.hats:
             odf.write_string(hat)
+
+        # New Hats
+        odf.write_varint(len(self.new_hats))
+        for new_hat in self.new_hats:
+            odf.write_string(new_hat)
+
+        # Leeway's Hat
+        odf.write_string(self.leeway_hat)
 
 
 class Savefile(Datafile):
@@ -420,6 +437,7 @@ class Savefile(Datafile):
         self.inventory = Inventory(self)
 
         # Any remaining data at the end that we're not sure of
+        self.remaining_loc = self.tell()
         self.remaining = self.read()
 
         # Sanity check: make sure that, were we to write the file back right now, it
