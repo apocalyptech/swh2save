@@ -241,9 +241,9 @@ def main():
     parser.add_argument('--add-upgrade',
             action=FlexiListAction,
             help="""
-                Unlock a specific upgrade/upgrades.  Can be specified more than once, and/or
-                separate upgrade names with commas.  Specify `list` or `help` to get a list
-                of valid upgrades.
+                Unlock a specific upgrade/upgrades.  This will also unlock key items as
+                necessary.  Can be specified more than once, and/or separate upgrade names
+                with commas.  Specify `list` or `help` to get a list of valid upgrades.
                 """,
             )
 
@@ -257,9 +257,23 @@ def main():
                 """,
             )
 
+    parser.add_argument('--add-key-item',
+            action=FlexiListAction,
+            help="""
+                Unlock a specific key item/items.  These are often tied to ship upgrades, and
+                the game should automatically apply the ship upgrade if the key item is in
+                your inventory.  Can be specified more than once, and/or separate item names
+                with commas.  Specify `list` or `help` to get a list of valid key items.
+                """,
+            )
+
     parser.add_argument('--unlock-key-items',
             action='store_true',
-            help='Unlock all Key Items.  These are often closely related to upgrades.',
+            help="""
+                Unlock all Key Items.  These are often tied to ship upgrades, and the game
+                should automatically apply the ship upgrade when key items are in your
+                inventory.
+                """,
             )
 
     parser.add_argument('--unlock-hats',
@@ -298,7 +312,7 @@ def main():
             ('Weapons', WEAPONS, None),
             ('Utilities', UTILITIES, None),
             ('Ship Equipment', SHIP_EQUIPMENT, None),
-            ('Key Items', KEY_ITEMS, None),
+            ('Key Items', KEY_ITEMS, 'add_key_item'),
             ('Upgrades', UPGRADES, 'add_upgrade'),
             ('Hats', HATS, None),
             ]:
@@ -477,7 +491,7 @@ def main():
                 requested_upgrades = args.add_upgrade
             needed_upgrades = set(requested_upgrades) - set(save.ship.upgrades)
             if len(needed_upgrades) == 0:
-                print(f'- Skipping upgrade unlocks; all upgrades are already unlocked')
+                print(f'- Skipping upgrade unlocks; all requested upgrades are already unlocked')
             else:
                 print(f'- Unlocking {len(needed_upgrades)} upgrades')
                 save.ship.upgrades.extend(sorted(needed_upgrades))
@@ -498,10 +512,14 @@ def main():
                 do_save = True
 
         # Key Items
-        if args.unlock_key_items:
-            needed_keyitems = set(KEY_ITEMS.keys()) - set([i.name for i in save.inventory.items])
+        if args.unlock_key_items or args.add_key_item:
+            if args.unlock_key_items:
+                requested_items = KEY_ITEMS.keys()
+            else:
+                requested_items = args.add_key_item
+            needed_keyitems = set(requested_items) - set([i.name for i in save.inventory.items])
             if len(needed_keyitems) == 0:
-                print(f'- Skipping key unlocks; all key items are already unlocked')
+                print(f'- Skipping key unlocks; all requested key items are already unlocked')
             else:
                 if added_key_items_from_upgrades:
                     extra = ' more'
@@ -510,12 +528,13 @@ def main():
                 print(f'- Unlocking {len(needed_keyitems)}{extra} key items')
                 for item in sorted(needed_keyitems):
                     save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
+                do_save = True
 
         # Hats!
         if args.unlock_hats:
             needed_hats = set(HATS.keys()) - set(save.inventory.hats)
             if len(needed_hats) == 0:
-                print(f'- Skipping hat unlocks; all hats are already unlocked')
+                print(f'- Skipping hat unlocks; all requested hats are already unlocked')
             else:
                 print(f'- Unlocking {len(needed_hats)} hats')
                 save.inventory.hats.extend(sorted(needed_hats))
