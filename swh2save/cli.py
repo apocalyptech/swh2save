@@ -446,6 +446,11 @@ def main():
 
         do_save = False
 
+        # Show the filename again
+        print(f'Processing: {args.filename}')
+        print('')
+
+        # Water (money)
         if args.water is not None:
             if save.resources.water == args.water:
                 print(f'- Skipping water; already set to {args.water}')
@@ -454,6 +459,7 @@ def main():
                 save.resources.water = args.water
                 do_save = True
 
+        # Fragments
         if args.fragments is not None:
             if save.resources.fragments == args.fragments:
                 print(f'- Skipping fragments; already set to {args.fragments}')
@@ -462,7 +468,8 @@ def main():
                 save.resources.fragments = args.fragments
                 do_save = True
 
-        added_keys_from_unlocks = False
+        # Upgrades
+        added_key_items_from_upgrades = False
         if args.unlock_upgrades or args.add_upgrade:
             if args.unlock_upgrades:
                 requested_upgrades = UPGRADES.keys()
@@ -484,18 +491,19 @@ def main():
                 # had the upgrade.  But still, let's check anyway.
                 needed_keyitems = required_keyitems - set([i.name for i in save.inventory.items])
                 if len(needed_keyitems) > 0:
-                    added_keys_from_unlocks = True
+                    added_key_items_from_upgrades = True
                     print(f' - Also unlocking {len(needed_keyitems)} needed key items')
                     for item in sorted(needed_keyitems):
                         save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
                 do_save = True
 
+        # Key Items
         if args.unlock_key_items:
             needed_keyitems = set(KEY_ITEMS.keys()) - set([i.name for i in save.inventory.items])
             if len(needed_keyitems) == 0:
                 print(f'- Skipping key unlocks; all key items are already unlocked')
             else:
-                if added_keys_from_unlocks:
+                if added_key_items_from_upgrades:
                     extra = ' more'
                 else:
                     extra = ''
@@ -503,7 +511,7 @@ def main():
                 for item in sorted(needed_keyitems):
                     save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
 
-
+        # Hats!
         if args.unlock_hats:
             needed_hats = set(HATS.keys()) - set(save.inventory.hats)
             if len(needed_hats) == 0:
@@ -514,6 +522,7 @@ def main():
                 save.inventory.new_hats.extend(sorted(needed_hats))
                 do_save = True
 
+        # Endgame Ship Equipment Pack
         if args.endgame_ship_pack:
             to_give = [
                     # Front weapons
@@ -545,6 +554,7 @@ def main():
                 save.inventory.add_item(item, InventoryItem.ItemFlag.SHIP_EQUIPMENT)
             do_save = True
 
+        # Endgame weapon pack
         if args.endgame_weapon_pack:
             to_give = [
                     # Snipers
@@ -583,6 +593,7 @@ def main():
                 save.inventory.add_item(item, InventoryItem.ItemFlag.WEAPON)
             do_save = True
 
+        # Endgame utility equipment pack
         if args.endgame_utility_pack:
             to_give = [
                     # Repair
@@ -672,6 +683,7 @@ def main():
                 save.inventory.add_item(item, InventoryItem.ItemFlag.UTILITY)
             do_save = True
 
+        # Save out, assuming we did anything
         if do_save:
             save.save_to(args.output)
             print('')
