@@ -94,7 +94,7 @@ def main():
                         return self.label.casefold() > other.casefold()
 
 
-            class ShipUpgrade(GameData):
+            class Upgrade(GameData):
 
                 def __init__(self, name, label, keyitem, category):
                     super().__init__(name, label)
@@ -102,10 +102,24 @@ def main():
                     self.category = category
 
 
-            class Hat(GameData):
+            class KeyItem(GameData):
+                pass
 
-                def __init__(self, name, label):
-                    super().__init__(name, label)
+
+            class Hat(GameData):
+                pass
+
+
+            class ShipEquipment(GameData):
+                pass
+
+
+            class Utility(GameData):
+                pass
+
+
+            class Weapon(GameData):
+                pass
 
             """), file=odf)
 
@@ -133,10 +147,11 @@ def main():
                     labels[parts[0]] = parts[1]
 
 
-            # Get a list of keyitems; not storing these separately, but we want 'em
-            # for the ship-upgrade handling
+            # Get a list of keyitems.  Needed also for proper upgrade handling
             keyitems = {}
             with game_pak.open('Definitions/key_items.xml') as keyitem_xml:
+
+                print('KEY_ITEMS = {', file=odf)
                 root = ET.fromstring(keyitem_xml.read())
                 for child in root:
                     if 'Abstract' in child.attrib:
@@ -147,13 +162,18 @@ def main():
                             loc_name = inner_child.text
                             break
                     keyitems[child.attrib['Name']] = labels[loc_name]
+                    print("        '{}': KeyItem(".format(child.attrib['Name']), file=odf)
+                    print("            '{}',".format(child.attrib['Name']), file=odf)
+                    print("            \"{}\",".format(quote_string(labels[loc_name])), file=odf)
+                    print("            ),", file=odf)
+                print('        }', file=odf)
+                print('', file=odf)
 
 
             # Now a list of ship upgrades
-            # TODO: get English labels for these as well
             with game_pak.open('Definitions/ship_upgrades.xml') as ship_upgrades:
 
-                print('SHIP_UPGRADES = {', file=odf)
+                print('UPGRADES = {', file=odf)
                 root = ET.fromstring(ship_upgrades.read())
                 upgrade_template_types = {}
                 for child in root:
@@ -183,7 +203,7 @@ def main():
                             and 'Template' in child.attrib \
                             and child.attrib['Template'] in upgrade_template_types:
                         upgrade_type = upgrade_template_types[child.attrib['Template']]
-                    print("        '{}': ShipUpgrade(".format(child.attrib['Name']), file=odf)
+                    print("        '{}': Upgrade(".format(child.attrib['Name']), file=odf)
                     print("            '{}',".format(child.attrib['Name']), file=odf)
                     print("            \"{}\",".format(quote_string(label)), file=odf)
                     if keyitem is None:
@@ -198,21 +218,57 @@ def main():
                 print('        }', file=odf)
                 print('', file=odf)
 
-            # Now hats!
-            with game_pak.open('Definitions/hats.xml') as hat_xml:
+            # Now a few datatypes that we're handling similarly.
+            for xml_filename, var_name, class_name, label_prefix, known_skips in [
+                    ('Definitions/hats.xml', 'HATS', 'Hat', '', set()),
+                    ('Definitions/ship_equipment.xml', 'SHIP_EQUIPMENT', 'ShipEquipment', '', set()),
+                    ('Definitions/utilities.xml', 'UTILITIES', 'Utility', '', set()),
+                    ('Definitions/weapons.xml', 'WEAPONS', 'Weapon', 'weapon_', {
+                        # These are virtualish weapons used as part of char skills, I think.  Shouldn't
+                        # ever show up in inventory lists.
+                        'weapon_utility_grenade_launcher_no_aimline',
+                        'weapon_utility_grenade_launcher_crippled',
+                        'weapon_utility_grenade_launcher_stun',
+                        'weapon_utility_grenade_launcher_ice',
+                        'weapon_utility_rocket_launcher_01',
+                        'weapon_utility_rocket_launcher_02',
+                        'weapon_utility_sidearm_01_aimline',
+                        'weapon_action_stun_gun',
+                        'weapon_action_diver_laser',
+                        }),
+                    ]:
 
-                print('HATS = {', file=odf)
-                root = ET.fromstring(hat_xml.read())
-                for child in root:
-                    if 'Abstract' in child.attrib:
-                        continue
-                    print("        '{}': Hat('{}', \"{}\"),".format(
-                        child.attrib['Name'],
-                        child.attrib['Name'],
-                        quote_string(labels[child.attrib['Name']]),
-                        ), file=odf)
-                print('        }', file=odf)
-                print('', file=odf)
+                with game_pak.open(xml_filename) as xml_data:
+
+                    print(f'{var_name} = {{', file=odf)
+                    root = ET.fromstring(xml_data.read())
+                    for child in root:
+                        if 'Abstract' in child.attrib:
+                            continue
+                        got_virtual = False
+                        for inner_child in child:
+                            if inner_child.tag == 'Virtual' and inner_child.text == 'true':
+                                got_virtual = True
+                                break
+                        if got_virtual:
+                            continue
+                        label_lookup = '{}{}'.format(label_prefix, child.attrib['Name'])
+                        if label_lookup not in labels:
+                            if child.attrib['Name'] not in known_skips:
+                                print('NOTICE: skipping {}({}); no translation found.'.format(
+                                    class_name,
+                                    child.attrib['Name'],
+                                    ))
+                            continue
+                        print("        '{}': {}(".format(
+                            child.attrib['Name'],
+                            class_name,
+                            ), file=odf)
+                        print("            '{}',".format(child.attrib['Name']), file=odf)
+                        print("            \"{}\",".format(quote_string(labels[label_lookup])), file=odf)
+                        print("            ),", file=odf)
+                    print('        }', file=odf)
+                    print('', file=odf)
 
     print(f'Wrote to: {output_file}')
 

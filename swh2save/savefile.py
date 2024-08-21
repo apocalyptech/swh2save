@@ -328,6 +328,20 @@ class InventoryItem(Chunk):
         return str(self.name)
 
 
+    def __lt__(self, other):
+        if type(other) == str:
+            return self.name.casefold() < other.casefold()
+        else:
+            return self.name.casefold() < other.name.casefold()
+
+
+    def __gt__(self, other):
+        if type(other) == str:
+            return self.name.casefold() > other.casefold()
+        else:
+            return self.name.casefold() > other.name.casefold()
+
+
     @staticmethod
     def create_new(item_id, item_name, item_flags):
         """

@@ -240,15 +240,40 @@ def main():
         print(f' - Fragments: {save.resources.fragments}')
         print(f'Crew Unlocked: {len(save.header.crew)}')
         print_columns(save.header.crew)
-        print(f'Unlocked Sub Upgrades: {len(save.ship.upgrades)}/{len(SHIP_UPGRADES)}')
+        print(f'Unlocked Sub Upgrades: {len(save.ship.upgrades)}/{len(UPGRADES)}')
         if args.verbose:
-            print_columns(sorted(save.ship.upgrades), columns=columns, lookup=SHIP_UPGRADES, lookup_sort=True)
+            print_columns(sorted(save.ship.upgrades), columns=columns, lookup=UPGRADES, lookup_sort=True)
         print(f'Equipped Sub Equipment: {len(save.ship.equipped)}')
         if args.verbose:
-            print_columns(save.ship.equipped, columns=columns)
+            # Not sorting this one since it's a short enough list; that way it should match what shows
+            # up in-game.
+            print_columns(save.ship.equipped, columns=columns, lookup=SHIP_EQUIPMENT)
         print(f'Items in inventory: {len(save.inventory.items)}')
         if args.verbose:
-            print_columns(save.inventory.items, columns=columns)
+            # Gonna sort these into categories for ease of browsing.
+            lookups = {
+                    'Weapons': WEAPONS,
+                    'Utilities': UTILITIES,
+                    'Ship Equipment': SHIP_EQUIPMENT,
+                    'Key Items': KEY_ITEMS,
+                    'Other': {},
+                    }
+            categorized = {
+                    'Weapons': [],
+                    'Utilities': [],
+                    'Ship Equipment': [],
+                    'Key Items': [],
+                    'Other': [],
+                    }
+            for item in save.inventory.items:
+                for category, lookup in lookups.items():
+                    if category == 'Other' or item.name in lookup:
+                        categorized[category].append(item.name)
+                        break
+            for category, items in categorized.items():
+                if len(items) > 0:
+                    print(f' - {category} ({len(items)}):')
+                    print_columns(sorted(items), columns=columns, lookup=lookups[category], lookup_sort=True, indent='   ')
         print(f'Unlocked hats: {len(save.inventory.hats)}/{len(HATS)}')
         if args.verbose:
             print_columns(sorted(save.inventory.hats), columns=columns, lookup=HATS, lookup_sort=True)
