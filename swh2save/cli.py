@@ -285,9 +285,6 @@ def main():
         #        save.inventory.hats.extend(sorted(list(needed_hats)))
         #        do_save = True
 
-        save.inventory.hats = ['hat_cyclop', 'hat_piper']
-        do_save = True
-
         if do_save:
             save.save_to(args.output)
             print(f'Wrote to: {args.output}')
