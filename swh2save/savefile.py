@@ -18,6 +18,7 @@
 
 import re
 import abc
+import enum
 import binascii
 
 from .datafile import Datafile
@@ -272,32 +273,52 @@ class Header(Chunk):
         for bot in self.crew:
             odf.write_string(bot)
 
+
 class InventoryItem(Chunk):
     """
     `ItIn` chunk -- A single inventory item.
     (Or "Item Inventory" as the four-letter code would imply. :)
     """
 
+
+    class ItemFlag(enum.Enum):
+        """
+        Flags used in the item chunk.  So far I've only ever seen these
+        four.  Given the values, it seems like this is maybe intended
+        to be a bitfield, but I've never actually seen them mixed.
+        """
+        WEAPON = 0x01
+        EQUIPMENT = 0x02
+        SHIP_UPGRADE = 0x04
+        KEYITEM = 0x08
+
+
     def __init__(self, df):
         super().__init__(df, 'ItIn')
 
+        # Seems to always be 0
         self.unknown_1 = self.df.read_uint8()
-        # This one, at least, definitely seems to be a varint -- see savegame_000.dat-17
-        self.unknown_2 = self.df.read_varint()
-        self.unknown_3 = self.df.read_uint32()
 
+        # Item ID (see Inventory for where the last-ID-used is stored)
+        self.id = self.df.read_varint()
+
+        # See the ItemFlag enum
+        self.flags = self.df.read_uint32()
+
+        # The name
         self.name = self.df.read_string()
-        #print(f' - Got name: {self.name}')
 
+        # These basically always appear to be 0
         self.unknown_4 = self.df.read_uint32()
         self.unknown_5 = self.df.read_uint32()
+        #print(f'{self.unknown_1} {self.id} {self.flags} {self.name} {self.unknown_4} {self.unknown_5}')
 
 
     def _write_to(self, odf):
 
         odf.write_uint8(self.unknown_1)
-        odf.write_varint(self.unknown_2)
-        odf.write_uint32(self.unknown_3)
+        odf.write_varint(self.id)
+        odf.write_uint32(self.flags)
         odf.write_string(self.name)
         odf.write_uint32(self.unknown_4)
         odf.write_uint32(self.unknown_5)
@@ -305,6 +326,29 @@ class InventoryItem(Chunk):
 
     def __str__(self):
         return str(self.name)
+
+
+    @staticmethod
+    def create_new(item_id, item_name, item_flags):
+        """
+        Creates a new item with the given ID and name.  The way this is done at
+        the moment is absurd; need to rethink how I'm instantiating these
+        things.
+        """
+        # TODO: seriously, this is absurd and weird.
+        odf = Savefile('foo', do_write=True)
+        odf.write_chunk_header('ItIn')
+        odf.write_uint8(0)
+        odf.write_varint(item_id)
+        if type(item_flags) == InventoryItem.ItemFlag:
+            odf.write_uint32(item_flags.value)
+        else:
+            odf.write_uint32(item_flags)
+        odf.write_string(item_name)
+        odf.write_uint32(0)
+        odf.write_uint32(0)
+        odf.seek(0)
+        return InventoryItem(odf)
 
 
 class Inventory(Chunk):
@@ -316,7 +360,10 @@ class Inventory(Chunk):
         super().__init__(df, 'Inve')
 
         self.unknown_1 = self.df.read_uint8()
-        self.unknown_2 = self.df.read_uint32()
+
+        # Goes up with each item you acquire.  New items will increment this by 1
+        # and use that as the ID
+        self.last_inventory_id = self.df.read_uint32()
 
         # On to the inventory...
         self.items = []
@@ -359,7 +406,8 @@ class Inventory(Chunk):
     def _write_to(self, odf):
 
         odf.write_uint8(self.unknown_1)
-        odf.write_uint32(self.unknown_2)
+
+        odf.write_uint32(self.last_inventory_id)
 
         # Items
         odf.write_varint(len(self.items))
@@ -388,6 +436,14 @@ class Inventory(Chunk):
 
         # Leeway's Hat
         odf.write_string(self.leeway_hat)
+
+
+    def add_item(self, item_name, item_flags):
+        """
+        Adds a new item with the given name to our inventory
+        """
+        self.last_inventory_id += 1
+        self.items.append(InventoryItem.create_new(self.last_inventory_id, item_name, item_flags))
 
 
 #class Loadout(Chunk):

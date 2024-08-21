@@ -23,7 +23,7 @@ import textwrap
 import itertools
 
 from .gamedata import *
-from .savefile import Savefile
+from .savefile import Savefile, InventoryItem
 
 def column_chunks(l, columns):
     """
@@ -186,12 +186,14 @@ def main():
             )
 
     # TODO: Would like to do these more selectively
-    # TODO: I suspect with our new string handling, we can probably do this now (especially
-    # since I've also got inventory available for the keyitems).
-    #parser.add_argument('--unlock-upgrades',
-    #        action='store_true',
-    #        help='Unlock all sub upgrades',
-    #        )
+    parser.add_argument('--unlock-upgrades',
+            action='store_true',
+            help="""
+                Unlock all sub upgrades.  Note that some upgrades are dependent on story triggers
+                to actually become active, so you may not actually have access to all of them
+                immediately.
+                """,
+            )
 
     parser.add_argument('--unlock-hats',
             action='store_true',
@@ -225,7 +227,7 @@ def main():
         print_columns(save.header.crew)
         print(f'Unlocked Sub Upgrades: {len(save.ship.upgrades)}/{len(SHIP_UPGRADES)}')
         if args.verbose:
-            print_columns(sorted(save.ship.upgrades), columns=columns)
+            print_columns(sorted(save.ship.upgrades), columns=columns, lookup=SHIP_UPGRADES, lookup_sort=True)
         print(f'Equipped Sub Equipment: {len(save.ship.equipped)}')
         if args.verbose:
             print_columns(save.ship.equipped, columns=columns)
@@ -304,17 +306,29 @@ def main():
                 save.resources.fragments = args.fragments
                 do_save = True
 
-        #if args.unlock_upgrades:
-        #    needed_upgrades = SHIP_UPGRADES ^ set(save.ship.upgrades)
-        #    if len(needed_upgrades) == 0:
-        #        print(f'Skipping upgrade unlocks; all upgrades are already unlocked')
-        #    else:
-        #        print(f'Unlocking {len(needed_upgrades)} sub upgrades')
-        #        save.ship.upgrades.extend(sorted(list(needed_upgrades)))
-        #        do_save = True
+        if args.unlock_upgrades:
+            needed_upgrades = set(SHIP_UPGRADES.keys()) - set(save.ship.upgrades)
+            if len(needed_upgrades) == 0:
+                print(f'Skipping upgrade unlocks; all upgrades are already unlocked')
+            else:
+                print(f'Unlocking {len(needed_upgrades)} sub upgrades')
+                save.ship.upgrades.extend(sorted(needed_upgrades))
+                required_keyitems = set()
+                for upgrade_str in needed_upgrades:
+                    upgrade = SHIP_UPGRADES[upgrade_str]
+                    if upgrade.keyitem is not None:
+                        required_keyitems.add(upgrade.keyitem)
+                # Theoretically we shouldn't have to bother with checking to see if
+                # we have these keyitems; if we *had* the item we'd've probably already
+                # had the upgrade.  But still, let's check anyway.
+                needed_keyitems = required_keyitems - set([i.name for i in save.inventory.items])
+                print(f' - Also unlocking {len(needed_keyitems)} needed key items')
+                for item in sorted(needed_keyitems):
+                    save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
+                do_save = True
 
         if args.unlock_hats:
-            needed_hats = set(HATS.keys()) ^ set(save.inventory.hats)
+            needed_hats = set(HATS.keys()) - set(save.inventory.hats)
             if len(needed_hats) == 0:
                 print(f'Skipping hat unlocks; all hats are already unlocked')
             else:

@@ -96,9 +96,10 @@ def main():
 
             class ShipUpgrade(GameData):
 
-                def __init__(self, name, label, keyitem):
+                def __init__(self, name, label, keyitem, category):
                     super().__init__(name, label)
                     self.keyitem = keyitem
+                    self.category = category
 
 
             class Hat(GameData):
@@ -132,16 +133,68 @@ def main():
                     labels[parts[0]] = parts[1]
 
 
+            # Get a list of keyitems; not storing these separately, but we want 'em
+            # for the ship-upgrade handling
+            keyitems = {}
+            with game_pak.open('Definitions/key_items.xml') as keyitem_xml:
+                root = ET.fromstring(keyitem_xml.read())
+                for child in root:
+                    if 'Abstract' in child.attrib:
+                        continue
+                    loc_name = child.attrib['Name']
+                    for inner_child in child:
+                        if inner_child.tag == 'LocalizedNameId':
+                            loc_name = inner_child.text
+                            break
+                    keyitems[child.attrib['Name']] = labels[loc_name]
+
+
             # Now a list of ship upgrades
             # TODO: get English labels for these as well
             with game_pak.open('Definitions/ship_upgrades.xml') as ship_upgrades:
 
                 print('SHIP_UPGRADES = {', file=odf)
                 root = ET.fromstring(ship_upgrades.read())
+                upgrade_template_types = {}
                 for child in root:
                     if 'Abstract' in child.attrib:
+                        for inner_child in child:
+                            if inner_child.tag == 'Type':
+                                upgrade_template_types[child.attrib['Name']] = inner_child.text
+                                break
                         continue
-                    print("        '{}',".format(child.attrib['Name']), file=odf)
+                    keyitem = None
+                    optional_layer = None
+                    upgrade_type = None
+                    for inner_child in child:
+                        if inner_child.tag == 'KeyItem':
+                            keyitem = inner_child.text
+                        elif inner_child.tag == 'ShowOptionalLayer':
+                            optional_layer = inner_child.text
+                        elif inner_child.tag == 'Type':
+                            upgrade_type = inner_child.text
+                    if optional_layer is not None:
+                        label = labels[optional_layer]
+                    elif keyitem is not None:
+                        label = keyitems[keyitem]
+                    else:
+                        label = child.attrib['Name']
+                    if upgrade_type is None \
+                            and 'Template' in child.attrib \
+                            and child.attrib['Template'] in upgrade_template_types:
+                        upgrade_type = upgrade_template_types[child.attrib['Template']]
+                    print("        '{}': ShipUpgrade(".format(child.attrib['Name']), file=odf)
+                    print("            '{}',".format(child.attrib['Name']), file=odf)
+                    print("            \"{}\",".format(quote_string(label)), file=odf)
+                    if keyitem is None:
+                        print("            None,", file=odf)
+                    else:
+                        print("            '{}',".format(keyitem), file=odf)
+                    if upgrade_type is None:
+                        print("            None,", file=odf)
+                    else:
+                        print("            '{}',".format(upgrade_type), file=odf)
+                    print("            ),", file=odf)
                 print('        }', file=odf)
                 print('', file=odf)
 
