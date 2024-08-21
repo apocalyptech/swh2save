@@ -288,8 +288,8 @@ class InventoryItem(Chunk):
         to be a bitfield, but I've never actually seen them mixed.
         """
         WEAPON = 0x01
-        EQUIPMENT = 0x02
-        SHIP_UPGRADE = 0x04
+        UTILITY = 0x02
+        SHIP_EQUIPMENT = 0x04
         KEYITEM = 0x08
 
 

@@ -200,6 +200,21 @@ def main():
             help='Unlock all hats',
             )
 
+    parser.add_argument('--give-ship-pack',
+            action='store_true',
+            help='Adds a collection of endgame ship equipment to your inventory',
+            )
+
+    parser.add_argument('--give-weapon-pack',
+            action='store_true',
+            help='Adds a collection of endgame weapons to your inventory',
+            )
+
+    parser.add_argument('--give-utility-pack',
+            action='store_true',
+            help='Adds a collection of endgame utility (equippable) items to your inventory',
+            )
+
     parser.add_argument('filename',
             type=str,
             nargs=1,
@@ -292,26 +307,26 @@ def main():
 
         if args.water is not None:
             if save.resources.water == args.water:
-                print(f'Skipping water; already set to {args.water}')
+                print(f'- Skipping water; already set to {args.water}')
             else:
-                print(f'Setting water to: {args.water}')
+                print(f'- Setting water to: {args.water}')
                 save.resources.water = args.water
                 do_save = True
 
         if args.fragments is not None:
             if save.resources.fragments == args.fragments:
-                print(f'Skipping fragments; already set to {args.fragments}')
+                print(f'- Skipping fragments; already set to {args.fragments}')
             else:
-                print(f'Setting fragments to: {args.fragments}')
+                print(f'- Setting fragments to: {args.fragments}')
                 save.resources.fragments = args.fragments
                 do_save = True
 
         if args.unlock_upgrades:
             needed_upgrades = set(SHIP_UPGRADES.keys()) - set(save.ship.upgrades)
             if len(needed_upgrades) == 0:
-                print(f'Skipping upgrade unlocks; all upgrades are already unlocked')
+                print(f'- Skipping upgrade unlocks; all upgrades are already unlocked')
             else:
-                print(f'Unlocking {len(needed_upgrades)} sub upgrades')
+                print(f'- Unlocking {len(needed_upgrades)} sub upgrades')
                 save.ship.upgrades.extend(sorted(needed_upgrades))
                 required_keyitems = set()
                 for upgrade_str in needed_upgrades:
@@ -330,15 +345,174 @@ def main():
         if args.unlock_hats:
             needed_hats = set(HATS.keys()) - set(save.inventory.hats)
             if len(needed_hats) == 0:
-                print(f'Skipping hat unlocks; all hats are already unlocked')
+                print(f'- Skipping hat unlocks; all hats are already unlocked')
             else:
-                print(f'Unlocking {len(needed_hats)} hats')
+                print(f'- Unlocking {len(needed_hats)} hats')
                 save.inventory.hats.extend(sorted(needed_hats))
                 save.inventory.new_hats.extend(sorted(needed_hats))
                 do_save = True
 
+        if args.give_ship_pack:
+            to_give = [
+                    # Front weapons
+                    'ship_equipment_torpedo_03',
+                    'ship_equipment_charge_laser_02',
+                    # Side weapons
+                    'ship_equipment_micro_torpedo_02',
+                    'ship_equipment_laser_02',
+                    # Top weapons
+                    'ship_equipment_torpedo_top_01',
+                    'ship_equipment_laser_top_01',
+                    # Torpedo Damage
+                    'ship_equipment_module_torpedo_damage_02',
+                    'ship_equipment_module_torpedo_damage_02',
+                    # Laser Damage
+                    'ship_equipment_module_laser_cooldown_rare_02',
+                    'ship_equipment_module_laser_cooldown_rare_02',
+                    # Health
+                    'ship_equipment_module_health_03',
+                    'ship_equipment_module_health_03',
+                    # Speed
+                    'ship_equipment_module_speed_03',
+                    'ship_equipment_module_speed_03',
+                    # Air
+                    'ship_equipment_module_air_01',
+                    ]
+            print(f'- Giving {len(to_give)} items in a ship equipment pack')
+            for item in to_give:
+                save.inventory.add_item(item, InventoryItem.ItemFlag.SHIP_EQUIPMENT)
+            do_save = True
+
+        if args.give_weapon_pack:
+            to_give = [
+                    # Snipers
+                    'sniper_06',
+                    'sniper_06',
+                    'sniper_05_rare',
+                    'sniper_05_rare',
+                    # SMGs (Reaper)
+                    'smg_06',
+                    'smg_06',
+                    'crossbow_05_rare',
+                    'crossbow_05_rare',
+                    # Handguns (Engineer)
+                    'handgun_06',
+                    'handgun_06',
+                    'handgun_05_rare',
+                    'handgun_05_rare',
+                    # Launchers (Boomer)
+                    'rpg_06',
+                    'rpg_06',
+                    'launcher_05_rare',
+                    'launcher_05_rare',
+                    # Hammers (Brawler)
+                    'hammer_06',
+                    'hammer_06',
+                    'hammer_05_rare',
+                    'hammer_05_rare',
+                    # Shotguns (Flanker)
+                    'shotgun_06',
+                    'shotgun_06',
+                    'shotgun_05_rare',
+                    'shotgun_05_rare',
+                    ]
+            print(f'- Giving {len(to_give)} items in a weapon equipment pack')
+            for item in to_give:
+                save.inventory.add_item(item, InventoryItem.ItemFlag.WEAPON)
+            do_save = True
+
+        if args.give_utility_pack:
+            to_give = [
+                    # Repair
+                    'utility_repair_03',
+                    'utility_repair_03',
+                    'utility_repair_03_rare',
+                    'utility_repair_03_rare',
+                    'utility_stimpack_rare',
+                    'utility_stimpack_rare',
+                    # Armor
+                    'utility_armor_03',
+                    'utility_armor_03',
+                    'utility_armor_03',
+                    'utility_armor_03',
+                    'utility_alloy_rare',
+                    'utility_alloy_rare',
+                    'utility_alloy_rare',
+                    'utility_alloy_rare',
+                    # Grenades / Rockets
+                    'utility_grenade_06_rare',
+                    'utility_grenade_06_rare',
+                    'utility_rocket_02_rare',
+                    'utility_rocket_02_rare',
+                    # Sidearms
+                    'utility_sidearm_05_rare',
+                    'utility_sidearm_05_rare',
+                    'utility_sidearm_06_rare',
+                    'utility_sidearm_06_rare',
+                    # Weapon Chargers
+                    'utility_weapon_charger',
+                    'utility_weapon_charger',
+                    # Knuckles
+                    'utility_knuckle_02',
+                    'utility_knuckle_02',
+                    # Boots / Movement
+                    'utility_boots_03_rare',
+                    'utility_boots_03_rare',
+                    'utility_boots_03_rare',
+                    'utility_boots_03_rare',
+                    'utility_boots_fireproof',
+                    'utility_boots_fireproof',
+                    'utility_boots_warm',
+                    'utility_boots_warm',
+                    'utility_boots_crippleproof',
+                    'utility_boots_crippleproof',
+                    'utility_jetpack',
+                    'utility_jetpack',
+                    'utility_jetpack',
+                    'utility_jetpack',
+                    # Crit / Sniper Tools
+                    'utility_crit_plus_1',
+                    'utility_crit_plus_1',
+                    'utility_scope_02_rare',
+                    'utility_scope_02_rare',
+                    'utility_scope_03',
+                    'utility_scope_03',
+                    'utility_goggles_02_rare',
+                    'utility_goggles_02_rare',
+                    # Cogs
+                    'utility_cogs_03',
+                    'utility_cogs_03',
+                    'utility_cogs_03',
+                    'utility_cogs_03',
+                    # Aura / Radiance
+                    'utility_aura_plus_rare',
+                    'utility_aura_plus_rare',
+                    'utility_radiance_rare',
+                    'utility_radiance_rare',
+                    # Damage
+                    'utility_damage_rare',
+                    'utility_damage_rare',
+                    'utility_damage_rare',
+                    'utility_damage_rare',
+                    # Cooldowns
+                    'utility_cool_rare',
+                    'utility_cool_rare',
+                    'utility_cool_rare',
+                    'utility_cool_rare',
+                    # XP
+                    'utility_experience_badge_02_rare',
+                    'utility_experience_badge_02_rare',
+                    'utility_experience_badge_02_rare',
+                    'utility_experience_badge_02_rare',
+                    ]
+            print(f'- Giving {len(to_give)} items in a utility equipment pack')
+            for item in to_give:
+                save.inventory.add_item(item, InventoryItem.ItemFlag.UTILITY)
+            do_save = True
+
         if do_save:
             save.save_to(args.output)
+            print('')
             print(f'Wrote to: {args.output}')
             print('')
 
