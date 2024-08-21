@@ -276,6 +276,15 @@ def main():
                 """,
             )
 
+    parser.add_argument('--add-hat',
+            action=FlexiListAction,
+            help="""
+                Unlock specific hats.  Can be specified more than once, and/or
+                separate hat names with commas.  Specify `list` or `help` to
+                get a list of valid hats.
+                """,
+            )
+
     parser.add_argument('--unlock-hats',
             action='store_true',
             help='Unlock all hats',
@@ -341,7 +350,7 @@ def main():
             ('Ship Equipment', SHIP_EQUIPMENT, 'add_ship_equipment'),
             ('Key Items', KEY_ITEMS, 'add_key_item'),
             ('Upgrades', UPGRADES, 'add_upgrade'),
-            ('Hats', HATS, None),
+            ('Hats', HATS, 'add_hat'),
             ]:
         show_possibilities = False
         if args.item_info:
@@ -558,8 +567,12 @@ def main():
                 do_save = True
 
         # Hats!
-        if args.unlock_hats:
-            needed_hats = set(HATS.keys()) - set(save.inventory.hats)
+        if args.unlock_hats or args.add_hat:
+            if args.unlock_hats:
+                requested_hats = HATS.keys()
+            else:
+                requested_hats = args.add_hat
+            needed_hats = set(requested_hats) - set(save.inventory.hats)
             if len(needed_hats) == 0:
                 print(f'- Skipping hat unlocks; all requested hats are already unlocked')
             else:
