@@ -241,7 +241,7 @@ def main():
     parser.add_argument('--add-upgrade',
             action=FlexiListAction,
             help="""
-                Unlock a specific upgrade/upgrades.  This will also unlock key items as
+                Unlock specific upgrades.  This will also unlock key items as
                 necessary.  Can be specified more than once, and/or separate upgrade names
                 with commas.  Specify `list` or `help` to get a list of valid upgrades.
                 """,
@@ -260,7 +260,7 @@ def main():
     parser.add_argument('--add-key-item',
             action=FlexiListAction,
             help="""
-                Unlock a specific key item/items.  These are often tied to ship upgrades, and
+                Unlock specific Key Items.  These are often tied to ship upgrades, and
                 the game should automatically apply the ship upgrade if the key item is in
                 your inventory.  Can be specified more than once, and/or separate item names
                 with commas.  Specify `list` or `help` to get a list of valid key items.
@@ -279,6 +279,33 @@ def main():
     parser.add_argument('--unlock-hats',
             action='store_true',
             help='Unlock all hats',
+            )
+
+    parser.add_argument('--add-ship-equipment',
+            action=FlexiListAction,
+            help="""
+                Unlock specific ship equipment.  Can be specified more than once, and/or
+                separate ship equipment names with commas.  Specify `list` or `help` to
+                get a list of valid ship gear.
+                """,
+            )
+
+    parser.add_argument('--add-utility',
+            action=FlexiListAction,
+            help="""
+                Unlock specific utility equipment.  Can be specified more than once, and/or
+                separate utility equipment names with commas.  Specify `list` or `help` to
+                get a list of valid utility gear.
+                """,
+            )
+
+    parser.add_argument('--add-weapon',
+            action=FlexiListAction,
+            help="""
+                Unlock specific weapons.  Can be specified more than once, and/or
+                separate weapon names with commas.  Specify `list` or `help` to
+                get a list of valid weapons.
+                """,
             )
 
     parser.add_argument('--endgame-ship-pack',
@@ -309,9 +336,9 @@ def main():
     # a file.
     did_info_dump = False
     for section, lookup, arg_var in [
-            ('Weapons', WEAPONS, None),
-            ('Utilities', UTILITIES, None),
-            ('Ship Equipment', SHIP_EQUIPMENT, None),
+            ('Weapons', WEAPONS, 'add_weapon'),
+            ('Utilities', UTILITIES, 'add_utility'),
+            ('Ship Equipment', SHIP_EQUIPMENT, 'add_ship_equipment'),
             ('Key Items', KEY_ITEMS, 'add_key_item'),
             ('Upgrades', UPGRADES, 'add_upgrade'),
             ('Hats', HATS, None),
@@ -540,6 +567,19 @@ def main():
                 save.inventory.hats.extend(sorted(needed_hats))
                 save.inventory.new_hats.extend(sorted(needed_hats))
                 do_save = True
+
+        # A cluster of inventory args which are all handled in the same way
+        for label, flag, arg in [
+                ('ship equipment', InventoryItem.ItemFlag.SHIP_EQUIPMENT, args.add_ship_equipment),
+                ('utility equipment', InventoryItem.ItemFlag.UTILITY, args.add_utility),
+                ('weapons', InventoryItem.ItemFlag.WEAPON, args.add_weapon),
+                ]:
+            if arg:
+                print(f'- Adding {len(arg)} {label} to inventory')
+                for item in arg:
+                    save.inventory.add_item(item, flag)
+                do_save = True
+
 
         # Endgame Ship Equipment Pack
         if args.endgame_ship_pack:
