@@ -125,6 +125,53 @@ def print_columns(
             num_columns -= 1
 
 
+class FlexiListAction(argparse.Action):
+    """
+    A custom argparse action which sort of acts like `append` in that
+    it creates a list and can be specified multiple times.  The main
+    difference is that users can also submit a comma-separated list
+    and it will be automatically split apart and added to the list.
+
+    Additionally, if `list` or `help` ever appears anywhere in the list,
+    it'll trim down the list to just a single option (will use `list`,
+    regardless of whether `list` or `help` was specified).
+
+    Given what we're using this for, there's actually *relatively*
+    little reason not to use a set rather than a list.  The one reason
+    I'm not is that when adding inventory items, they'll show up in
+    the in-game inventory in the order they're added (well, the reverse
+    of the order added, anyway), and I'd like the user-specified
+    item adding to reflect that.  So, a list it is.
+    """
+
+    def __call__(self, parser, namespace, this_value, option_string):
+
+        # Force the attribute to a list, if it isn't already
+        arg_value = getattr(namespace, self.dest)
+        if not isinstance(arg_value, list):
+            arg_value = []
+
+        # Check for `list`
+        if 'list' in arg_value:
+            return
+
+        # Split the given arg, if necessary
+        if ',' in this_value:
+            values = [v.strip() for v in this_value.split(',')]
+        else:
+            values = [this_value.strip()]
+
+        # Check to see if `list` or `help` was specified.  If so,
+        # trim it down, otherwise add the new values.
+        if 'list' in values or 'help' in values:
+            arg_value = ['list']
+        else:
+            arg_value.extend(values)
+
+        # Set our value and continue on!
+        setattr(namespace, self.dest, arg_value)
+
+
 def main():
 
     parser = argparse.ArgumentParser(
@@ -191,6 +238,15 @@ def main():
             help='Sets the amount of water (money)',
             )
 
+    parser.add_argument('--add-upgrade',
+            action=FlexiListAction,
+            help="""
+                Unlock a specific upgrade/upgrades.  Can be specified more than once, and/or
+                separate upgrade names with commas.  Specify `list` or `help` to get a list
+                of valid upgrades.
+                """,
+            )
+
     # TODO: I'd like to be able to unlock these by category, as well...
     parser.add_argument('--unlock-upgrades',
             action='store_true',
@@ -201,7 +257,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-keys',
+    parser.add_argument('--unlock-key-items',
             action='store_true',
             help='Unlock all Key Items.  These are often closely related to upgrades.',
             )
@@ -235,16 +291,61 @@ def main():
     args = parser.parse_args()
     args.filename = args.filename[0]
 
+    # If we need to do some info dumps, do them now before we even try loading
+    # a file.
+    did_info_dump = False
+    for section, lookup, arg_var in [
+            ('Weapons', WEAPONS, None),
+            ('Utilities', UTILITIES, None),
+            ('Ship Equipment', SHIP_EQUIPMENT, None),
+            ('Key Items', KEY_ITEMS, None),
+            ('Upgrades', UPGRADES, 'add_upgrade'),
+            ('Hats', HATS, None),
+            ]:
+        show_possibilities = False
+        if args.item_info:
+            show_possibilities = True
+        else:
+            if arg_var is not None:
+                arg_value = getattr(args, arg_var)
+                if arg_value is not None:
+                    arg_text = '--{}'.format(arg_var.replace('_', '-'))
+                    if 'list' in arg_value:
+                        show_possibilities = True
+                    else:
+                        for item in arg_value:
+                            if item not in lookup:
+                                print(f'ERROR: "{item}" is not valid in {arg_text}.  Showing available options:')
+                                print('')
+                                show_possibilities = True
+                                break
+        if show_possibilities:
+            header = f'Valid {section}'
+            print(header)
+            print('-'*len(header))
+            print('')
+            for name, obj in sorted(lookup.items()):
+                if name == obj.label:
+                    print(f' - {name}')
+                else:
+                    print(f' - {name}: {obj.label}')
+            print('')
+            did_info_dump = True
+    if did_info_dump:
+        return
+
+    # Normalize the columns arg for print_columns
     if args.single_column:
         columns = 1
     else:
         columns = None
 
+    # Load in the savefile
     save = Savefile(args.filename)
 
+    # Now decide what to do.  First up: listing contents!
     if args.list:
 
-        # TODO: would like to pull in english titles for various of the raw values
         print(f'Savefile Version: {save.version}')
         print('General Game Information:')
         print(f' - Water (money): {save.resources.water}')
@@ -289,24 +390,9 @@ def main():
         if args.verbose:
             print_columns(sorted(save.inventory.hats), columns=columns, lookup=HATS, lookup_sort=True)
 
-    elif args.item_info:
-
-        for section, lookup in [
-                ('Weapons', WEAPONS),
-                ('Utilities', UTILITIES),
-                ('Ship Equipment', SHIP_EQUIPMENT),
-                ('Key Items', KEY_ITEMS),
-                ('Upgrades', UPGRADES),
-                ('Hats', HATS),
-                ]:
-
-            print(section)
-            print('-'*len(section))
-            print('')
-            for name, obj in sorted(lookup.items()):
-                print(f' - {name}: {obj.label}')
-            print('')
-
+    # If we get here, just checking to make sure our parsing works!
+    # (That's technically already done by this point; we're just checking to
+    # see if we need to print some extra debug info.)
     elif args.check:
 
         if args.debug:
@@ -331,6 +417,7 @@ def main():
                         print('.', end='')
                 print('')
 
+    # Otherwise, we're actually making some edits, theoretically
     elif args.output:
 
         # Print a warning, now that we're attempting to find+fix string references
@@ -376,12 +463,16 @@ def main():
                 do_save = True
 
         added_keys_from_unlocks = False
-        if args.unlock_upgrades:
-            needed_upgrades = set(UPGRADES.keys()) - set(save.ship.upgrades)
+        if args.unlock_upgrades or args.add_upgrade:
+            if args.unlock_upgrades:
+                requested_upgrades = UPGRADES.keys()
+            else:
+                requested_upgrades = args.add_upgrade
+            needed_upgrades = set(requested_upgrades) - set(save.ship.upgrades)
             if len(needed_upgrades) == 0:
                 print(f'- Skipping upgrade unlocks; all upgrades are already unlocked')
             else:
-                print(f'- Unlocking {len(needed_upgrades)} sub upgrades')
+                print(f'- Unlocking {len(needed_upgrades)} upgrades')
                 save.ship.upgrades.extend(sorted(needed_upgrades))
                 required_keyitems = set()
                 for upgrade_str in needed_upgrades:
@@ -399,16 +490,16 @@ def main():
                         save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
                 do_save = True
 
-        if args.unlock_keys:
+        if args.unlock_key_items:
             needed_keyitems = set(KEY_ITEMS.keys()) - set([i.name for i in save.inventory.items])
             if len(needed_keyitems) == 0:
-                print(f'- Skipping key unlocks; all keys are already unlocked')
+                print(f'- Skipping key unlocks; all key items are already unlocked')
             else:
                 if added_keys_from_unlocks:
                     extra = ' more'
                 else:
                     extra = ''
-                print(f'- Unlocking {len(needed_keyitems)}{extra} keys')
+                print(f'- Unlocking {len(needed_keyitems)}{extra} key items')
                 for item in sorted(needed_keyitems):
                     save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
 
@@ -585,6 +676,10 @@ def main():
             save.save_to(args.output)
             print('')
             print(f'Wrote to: {args.output}')
+            print('')
+        else:
+            print('')
+            print('NOTICE: No changes made, not writing any data!')
             print('')
 
 
