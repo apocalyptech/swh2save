@@ -19,6 +19,7 @@
 import os
 import math
 import argparse
+import textwrap
 import itertools
 
 from .gamedata import *
@@ -143,6 +144,12 @@ def main():
             help='Force the verbose view to have one item per line instead of trying to use columns',
             )
 
+    parser.add_argument('--no-warning',
+            dest='show_warning',
+            action='store_false',
+            help='Suppress the warning about potential savefile corruption',
+            )
+
     parser.add_argument('-f', '--force',
             action='store_true',
             help='Overwrite the output filename without prompting, if it already exists',
@@ -159,22 +166,17 @@ def main():
             )
 
     # TODO: Would like to do these more selectively
-    # ... also, this currently ends up creating a "corrupt" save.  I suspect it
-    # has to do with breaking string references later in the file that we haven't
-    # gotten around to parsing yet.
+    # TODO: I suspect with our new string handling, we can probably do this now (especially
+    # since I've also got inventory available for the keyitems).
     #parser.add_argument('--unlock-upgrades',
     #        action='store_true',
     #        help='Unlock all sub upgrades',
     #        )
 
-    # TODO: Likewise, this currently causes "corrupt" saves.  Again, I suspect it
-    # may have to do with breaking future string references (though of course it
-    # could also be something else entirely -- there's some bytes immediately after
-    # the hat list that I don't yet understand)
-    #parser.add_argument('--unlock-hats',
-    #        action='store_true',
-    #        help='Unlock all hats',
-    #        )
+    parser.add_argument('--unlock-hats',
+            action='store_true',
+            help='Unlock all hats',
+            )
 
     parser.add_argument('filename',
             type=str,
@@ -240,6 +242,21 @@ def main():
 
     elif args.output:
 
+        # Print a warning, now that we're attempting to find+fix string references
+        # even in parts of the file we don't actually know how to parse yet.
+        if args.show_warning:
+            print(textwrap.dedent("""
+                    ***WARNING**
+                    Due to the nature of the savegame format, and the fact that this utility
+                    doesn't actually understand the entire format yet, edits performed to
+                    your savegames have a small but nonzero chance of resulting in corrupted
+                    savegames.  I believe the risk is extremely small, but keep it in mind!
+                    Even if previous similar edits have worked fine, it's possible that this
+                    could encounter an edge case which results in an invalid save file.  Keep
+                    backups of your saves, and use with caution!
+                    ***WARNING**
+                    """))
+
         if not args.force and os.path.exists(args.output):
             print(f'WARNING: {args.output} already exists.')
             response = input('Overwrite (y/N)? ').strip().lower()
@@ -276,14 +293,15 @@ def main():
         #        save.ship.upgrades.extend(sorted(list(needed_upgrades)))
         #        do_save = True
 
-        #if args.unlock_hats:
-        #    needed_hats = HATS ^ set(save.inventory.hats)
-        #    if len(needed_hats) == 0:
-        #        print(f'Skipping hat unlocks; all hats are already unlocked')
-        #    else:
-        #        print(f'Unlocking {len(needed_hats)} hats')
-        #        save.inventory.hats.extend(sorted(list(needed_hats)))
-        #        do_save = True
+        if args.unlock_hats:
+            needed_hats = HATS ^ set(save.inventory.hats)
+            if len(needed_hats) == 0:
+                print(f'Skipping hat unlocks; all hats are already unlocked')
+            else:
+                print(f'Unlocking {len(needed_hats)} hats')
+                save.inventory.hats.extend(sorted(needed_hats))
+                save.inventory.new_hats.extend(sorted(needed_hats))
+                do_save = True
 
         if do_save:
             save.save_to(args.output)

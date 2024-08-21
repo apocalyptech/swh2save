@@ -42,12 +42,14 @@ class Datafile:
         else:
             with open(self.filename, 'rb') as temp_df:
                 self.data = temp_df.read()
+                self.data_len = len(self.data)
                 self.df = io.BytesIO(self.data)
             self.df.seek(0)
 
         # The savefile format saves space by only storing strings once, and referring
         # back to previous locations if the string pops up again.
         self.string_registry_read = {}
+        self.string_registry_read_seen = set()
         self.string_registry_write = {}
 
     def seek(self, offset, whence=os.SEEK_SET):
@@ -88,16 +90,22 @@ class Datafile:
         the places where I'm reading something as a u8 are actually
         supposed to be varints.
         """
+        iter_count = 0
         data = 0
         cur_shift = 0
         keep_going = True
         while keep_going:
+            if iter_count >= 4:
+                # If we've gone more than four bytes, there's no way
+                # it's a value we care about.
+                raise RuntimeError(f'Runaway varint detected at 0x{self.tell()-iter_count:X}')
             new_byte = self.read_uint8()
             data |= ((new_byte & 0x7F) << cur_shift)
             if new_byte & 0x80 == 0x80:
                 cur_shift += 7
             else:
                 keep_going = False
+            iter_count += 1
         return data
 
     def read_string(self):
@@ -134,6 +142,7 @@ class Datafile:
             data = self.read(strlen)
             decoded = data.decode(self.encoding)
             self.string_registry_read[string_loc] = decoded
+            self.string_registry_read_seen.add(decoded)
             return decoded
         else:
             target_loc = second_val_loc-second_val

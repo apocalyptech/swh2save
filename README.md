@@ -14,8 +14,19 @@ Thunderful Development.
 At time of writing, as the disclaimer above mentions, it is pre-alpha and
 can't do much.  As such, I will *not* be including usage instructions and
 the like, though if you're familiar enough with running Python stuff from
-commandline, feel free to give it a go!  At the moment its only actual
-editing capability is water (money) and fragments, though.
+commandline, feel free to give it a go!  Keep in mind that functionality is
+currently quite limited.
+
+WARNING
+=======
+
+Due to the nature of the savegame format (see below in the Format Info
+section), and the fact that this utility doesn't actually understand the entire
+format yet, edits performed to your savegames have a small but nonzero chance
+of resulting in corrupted savegames.  I believe the risk is extremely small,
+but keep it in mind!  Even if previous similar edits have worked fine, it's
+possible that this could encounter an edge case which results in an invalid
+save file.  Keep backups of your saves, and use with caution!
 
 Format Info
 ===========
@@ -48,25 +59,28 @@ first length) and you're good.  If that second varint is >0, though, it specifie
 the number of bytes *backwards* you need to read in the file (starting from the
 location of the pointer/second-number varint) to get to the string data.
 
-That backwards-string-referencing is, I *think*, what's getting in the way of some
-edits for me at the moment.  I can change simple things like water/fragements, but
-if I try to add a new string to the sub-upgrade array or collected-hats array, for
-instance, the game won't load the file, claiming that it's corrupt.  I *suspect* that
-it's because any future string references after the array whose length I changed
-now no longer point at the proper spot, since they were relative offsets.  It could
-be that it's something else causing problems, of course, but that's my current theory.
+That backwards-string-referencing poses some problems for save editing, namely that
+any change in file length (such as adding an inventory item or hat, etc) will break
+any future string backreference unless it gets fixed.  For areas of the savegame that
+we've parsed out already, that's trivial and happens automatically by the
+string-handling functions, but at time of writing, the whole savegame format is *not*
+known (and I doubt I'll ever get to the point of having it 100% mapped).  If we write
+out a save with those references broken, it'll result in the game saying that the
+save is corrupt, and refusing to load it (which is certainly fair!)
 
-The somewhat annoying upshot of that is that if that *is* the problem I'm having with
-modifying those arrays, it seems like I may have to decode nearly all of the save
-data in order to be able to safely make changes to those arrays.  The editor would
-have to understand the syntax far enough along to at least make it past the *last*
-backwards string reference.  In SWH1, they didn't do any of this backwards-referencing,
-so that utility was able to just *stop* once we were through the data I cared about,
-and it was fine.  Possibly not so with this one!
-
-And, of course, it's possible that the issue I was having with altering arrays was
-due to some other problem, too.  There's a lot of unknown values in there at the moment.
-If anyone ends up figuring out something about all this, please let me know!
+So, what to do about it, if I want to be able to make arbitrary edits without having
+the whole file mapped?  What I settled on was doing a bruteforce search through the
+remaining save data to look for string definitions and string references, and then
+run those through our usual string-handling functions on the backend.  The detection
+for string definitions is at least somewhat prone to false-positives, but IMO those
+aren't problematic; the data will still be written out identically even if we think
+something's a string which isn't.  The detection for string references is, I believe,
+unlikely to yield false positives, since it must match on both string length and the
+exact back-reference length matching up.  IMO we'd have to be super unlucky to encounter
+a case where some arbitrary binary data happened to look like a valid string reference.
+So, that's what we're doing.  The chance of it causing problems is nonzero, and I've
+added a pretty strongly-worded warning on the CLI output, but for now that'll have to
+do!
 
 The only other thing to mention is the savefile header.  The first four bytes are the
 magic ASCII value `SWH2`.  The next byte (maybe a varint?) is, I assume, the savefile

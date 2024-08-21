@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+import re
 import abc
 import binascii
 
@@ -467,6 +468,7 @@ class Savefile(Datafile):
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
         self.remaining = self.read()
+        self.finish_remaining_string_registry()
 
         # Sanity check: make sure that, were we to write the file back right now, it
         # remains identical to the input
@@ -508,7 +510,14 @@ class Savefile(Datafile):
         self.inventory.write_to(odf)
 
         # Any remaining data at the end that we're not sure of
-        odf.write(self.remaining)
+        #odf.write(self.remaining)
+        for segment in self.remaining_categorized:
+            if type(segment) == bytes:
+                odf.write(segment)
+            elif type(segment) == str:
+                odf.write_string(segment)
+            else:
+                raise RuntimeError(f'Unknown segment type in remaining data: {type(segment)}')
 
         # Now fix the checksum
         new_checksum = binascii.crc32(odf.getvalue()[9:])
@@ -522,4 +531,191 @@ class Savefile(Datafile):
     def save_to(self, filename):
         odf = self._prep_write_data(filename)
         odf.save()
+
+
+    def _read_remaining_varint(self, pos):
+        """
+        Reads a varint from our remaining data.  This duplicates the logic
+        from `datafile.read_varint`, but that function likes working on
+        a file-like object, whereas this one's operating on a chunk of
+        bytes.  Arguably we could normalize things so that we could use
+        a single function, but we'll cope for now.  If I ever get through
+        the whole savefile format, I should be able to strip this out
+        entirely.
+        """
+        iter_count = 0
+        data = 0
+        cur_shift = 0
+        keep_going = True
+        while keep_going:
+            if iter_count >= 4:
+                # If we've gone more than 4 bytes, there's no way
+                # it's a value we care about.
+                return None
+            new_byte = self.data[pos]
+            pos += 1
+            data |= ((new_byte & 0x7F) << cur_shift)
+            if new_byte & 0x80 == 0x80:
+                cur_shift += 7
+            else:
+                keep_going = False
+            iter_count += 1
+        return (data, pos)
+
+
+    def _check_remaining_string(self):
+        """
+        Checks our current position in the remaining data to see if there's
+        a string stored here, either as an initial definition or a reference.
+        Returns `True` if we found a string, and `False` otherwise.  If we
+        did find a string, we will also store any inbetween data in our
+        `remaining_categorized` list and advance the current position.
+
+        This duplicates a fair bit of logic from `datafile.read_string`, but
+        needs to do various things differently due to the circumstances of
+        remaining-data processing, so we'll cope for now.  If I ever get
+        through the whole savefile format, I should be able to strip this
+        out entirely.
+        """
+        my_pos = self.remaining_cur_pos
+        result = self._read_remaining_varint(my_pos)
+        if result is None:
+            return False
+        strlen, my_pos = result
+        if strlen == 0:
+            return False
+        elif strlen > 255:
+            # Very arbitrary size restriction here, but the maximum name for
+            # top-level elements in Definitions/*.xml, even including the
+            # sillier chars in the regex, is 50.  I'm assuming anything this
+            # big isn't worth checking; it's likely to be a false positive.
+            return False
+        second_val_pos = my_pos
+        result = self._read_remaining_varint(my_pos)
+        if result is None:
+            return False
+        second_val, my_pos = result
+        if second_val == 0:
+            # Potential string; read it in and see
+            string_val = self.data[my_pos:my_pos+strlen]
+            if len(string_val) != strlen:
+                # Probably overflowed past the end of the file?
+                return False
+            string_val = string_val.decode(self.encoding)
+            if not self.valid_string_re.match(string_val):
+                # Doesn't look like a string!
+                return False
+            if string_val in self.string_registry_read_seen:
+                # We've already seen this string; that would mean that both are
+                # probably false positives.  Not a big deal, but we'll avoid
+                # storing this duplicate as a string
+                return False
+            # Finally, we're as sure as we can be that this is a valid string.
+            # Even if it's a false positive, we should be safe writing it out as
+            # a string later, since that'll result in the same byte sequence,
+            # and nothing would be referencing it unless there's a *really*
+            # unlucky coincidence.
+            #print(f' <- {string_val}')
+
+            # Store any data from before the string
+            if self.remaining_last_pos < self.remaining_cur_pos:
+                self.remaining_categorized.append(self.data[self.remaining_last_pos:self.remaining_cur_pos])
+
+            # Store the string
+            self.string_registry_read[my_pos] = string_val
+            self.string_registry_read_seen.add(string_val)
+            self.remaining_categorized.append(string_val)
+
+            # Update current position
+            self.remaining_cur_pos = my_pos + strlen
+            self.remaining_last_pos = self.remaining_cur_pos
+            return True
+        else:
+            # Potential string reference; take a peek
+            target_pos = second_val_pos-second_val
+            if target_pos in self.string_registry_read:
+                destination_string = self.string_registry_read[target_pos]
+                if len(destination_string) != strlen:
+                    # String lengths don't match; this is a false positive!
+                    return False
+                # Now it's almost assured that we've reached a valid string reference.
+                # Store it!
+                #print(f' -> {destination_string}')
+
+                # Store any data from before the string
+                if self.remaining_last_pos < self.remaining_cur_pos:
+                    self.remaining_categorized.append(self.data[self.remaining_last_pos:self.remaining_cur_pos])
+
+                # Now store the string
+                self.remaining_categorized.append(destination_string)
+
+                # Update current position
+                self.remaining_cur_pos = my_pos
+                self.remaining_last_pos = self.remaining_cur_pos
+                return True
+            else:
+                return False
+
+
+    def finish_remaining_string_registry(self):
+        """
+        So it's unlikely that I'm going to end up decoding the *entire*
+        savefile, and even if it eventually happens, I am certainly not
+        going to finish that process for some time.  This leaves me with
+        the problem of string references in the "remaining" bit of the
+        save that I haven't processed.  Namely: any edit I make in here
+        which changes the length of the file in any way is almost
+        certainly going to break string references after the edit.  There
+        are string references very near the end of 300kb saves which
+        reference early-save strings, etc.
+
+        So, what to do?  Well: *detecting* string references in the file
+        is actually not a huge problem.  Detecting string definitions is
+        a bit prone to false-positives, but we don't really have to worry
+        about that too much -- a reference will point back to a string
+        we've seen earlier on, and we can match on the strlen for an even
+        stronger match.  The chances of false positives on the reference
+        detection is, IMO, low enough that it's not worth worrying about.
+
+        The plan, then: once I get to the "remaining" data bit, brute-force
+        search the remaining data for more strings and string references,
+        making a list of string references as I go.  Then when we write
+        out the file, instead of just blindly writing out the remaining data,
+        we'll have to go through and update them as-needed.  Kind of a pain,
+        but I think it should be safe to do, and allow this util to be
+        Actually Useful.
+
+        Anyway, this function is the bit which scans the remaining data and
+        finishes filling out our `string_registry_read` dict.  It'll also
+        create a new list of string references so we can reconstruct later.
+        """
+
+        # regex we're using to determine to autodetect strings.
+        # A few additions we *could* make:
+        #      /\(\) \.
+        # Those would let us match literally every top-level `Name`
+        # attr in Definitions/*.xml, but the extra ones we pull in
+        # are largely dumb (file paths, and one name with a
+        # parenthetical comment in it).  Gonna go ahead and leave
+        # those out, on the theory that they're unlikely to show up
+        # in savefiles.
+        self.valid_string_re = re.compile(r'^[-a-zA-Z0-9_]+$')
+
+        # We're going to break the remaining data up into bit: a
+        # list whose elements will either be `bytes` or `str`.  `bytes`
+        # entries will be written as-is; `str` objects will be handled
+        # as strings.
+        self.remaining_categorized = []
+
+        # Start looping
+        self.remaining_cur_pos = self.remaining_loc
+        self.remaining_last_pos = self.remaining_loc
+        while self.remaining_cur_pos < self.data_len:
+            if not self._check_remaining_string():
+                self.remaining_cur_pos += 1
+
+        # Categorize any data after the last string value
+        if self.remaining_last_pos < self.data_len:
+            self.remaining_categorized.append(self.data[self.remaining_last_pos:])
+
 
