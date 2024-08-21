@@ -148,6 +148,12 @@ def main():
             help='Output filename (required if making changes)',
             )
 
+    # TODO: We shouldn't have to specify a filename when using this one
+    mode.add_argument('-i', '--item-info',
+            action='store_true',
+            help='Dump a list of item strings that can be used with this app',
+            )
+
     parser.add_argument('-v', '--verbose',
             action='store_true',
             help='Show extra information when listing savegame contents',
@@ -185,14 +191,19 @@ def main():
             help='Sets the amount of water (money)',
             )
 
-    # TODO: Would like to do these more selectively
+    # TODO: I'd like to be able to unlock these by category, as well...
     parser.add_argument('--unlock-upgrades',
             action='store_true',
             help="""
-                Unlock all sub upgrades.  Note that some upgrades are dependent on story triggers
-                to actually become active, so you may not actually have access to all of them
-                immediately.
+                Unlock all upgrades.  This will also unlock key items as necessary.  Note
+                that some upgrades are dependent on story triggers to actually become active,
+                so you may not actually have access to all of them immediately.
                 """,
+            )
+
+    parser.add_argument('--unlock-keys',
+            action='store_true',
+            help='Unlock all Key Items.  These are often closely related to upgrades.',
             )
 
     parser.add_argument('--unlock-hats',
@@ -200,17 +211,17 @@ def main():
             help='Unlock all hats',
             )
 
-    parser.add_argument('--give-ship-pack',
+    parser.add_argument('--endgame-ship-pack',
             action='store_true',
             help='Adds a collection of endgame ship equipment to your inventory',
             )
 
-    parser.add_argument('--give-weapon-pack',
+    parser.add_argument('--endgame-weapon-pack',
             action='store_true',
             help='Adds a collection of endgame weapons to your inventory',
             )
 
-    parser.add_argument('--give-utility-pack',
+    parser.add_argument('--endgame-utility-pack',
             action='store_true',
             help='Adds a collection of endgame utility (equippable) items to your inventory',
             )
@@ -277,6 +288,24 @@ def main():
         print(f'Unlocked hats: {len(save.inventory.hats)}/{len(HATS)}')
         if args.verbose:
             print_columns(sorted(save.inventory.hats), columns=columns, lookup=HATS, lookup_sort=True)
+
+    elif args.item_info:
+
+        for section, lookup in [
+                ('Weapons', WEAPONS),
+                ('Utilities', UTILITIES),
+                ('Ship Equipment', SHIP_EQUIPMENT),
+                ('Key Items', KEY_ITEMS),
+                ('Upgrades', UPGRADES),
+                ('Hats', HATS),
+                ]:
+
+            print(section)
+            print('-'*len(section))
+            print('')
+            for name, obj in sorted(lookup.items()):
+                print(f' - {name}: {obj.label}')
+            print('')
 
     elif args.check:
 
@@ -346,8 +375,9 @@ def main():
                 save.resources.fragments = args.fragments
                 do_save = True
 
+        added_keys_from_unlocks = False
         if args.unlock_upgrades:
-            needed_upgrades = set(SHIP_UPGRADES.keys()) - set(save.ship.upgrades)
+            needed_upgrades = set(UPGRADES.keys()) - set(save.ship.upgrades)
             if len(needed_upgrades) == 0:
                 print(f'- Skipping upgrade unlocks; all upgrades are already unlocked')
             else:
@@ -355,17 +385,33 @@ def main():
                 save.ship.upgrades.extend(sorted(needed_upgrades))
                 required_keyitems = set()
                 for upgrade_str in needed_upgrades:
-                    upgrade = SHIP_UPGRADES[upgrade_str]
+                    upgrade = UPGRADES[upgrade_str]
                     if upgrade.keyitem is not None:
                         required_keyitems.add(upgrade.keyitem)
                 # Theoretically we shouldn't have to bother with checking to see if
                 # we have these keyitems; if we *had* the item we'd've probably already
                 # had the upgrade.  But still, let's check anyway.
                 needed_keyitems = required_keyitems - set([i.name for i in save.inventory.items])
-                print(f' - Also unlocking {len(needed_keyitems)} needed key items')
+                if len(needed_keyitems) > 0:
+                    added_keys_from_unlocks = True
+                    print(f' - Also unlocking {len(needed_keyitems)} needed key items')
+                    for item in sorted(needed_keyitems):
+                        save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
+                do_save = True
+
+        if args.unlock_keys:
+            needed_keyitems = set(KEY_ITEMS.keys()) - set([i.name for i in save.inventory.items])
+            if len(needed_keyitems) == 0:
+                print(f'- Skipping key unlocks; all keys are already unlocked')
+            else:
+                if added_keys_from_unlocks:
+                    extra = ' more'
+                else:
+                    extra = ''
+                print(f'- Unlocking {len(needed_keyitems)}{extra} keys')
                 for item in sorted(needed_keyitems):
                     save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
-                do_save = True
+
 
         if args.unlock_hats:
             needed_hats = set(HATS.keys()) - set(save.inventory.hats)
@@ -377,7 +423,7 @@ def main():
                 save.inventory.new_hats.extend(sorted(needed_hats))
                 do_save = True
 
-        if args.give_ship_pack:
+        if args.endgame_ship_pack:
             to_give = [
                     # Front weapons
                     'ship_equipment_torpedo_03',
@@ -408,7 +454,7 @@ def main():
                 save.inventory.add_item(item, InventoryItem.ItemFlag.SHIP_EQUIPMENT)
             do_save = True
 
-        if args.give_weapon_pack:
+        if args.endgame_weapon_pack:
             to_give = [
                     # Snipers
                     'sniper_06',
@@ -446,7 +492,7 @@ def main():
                 save.inventory.add_item(item, InventoryItem.ItemFlag.WEAPON)
             do_save = True
 
-        if args.give_utility_pack:
+        if args.endgame_utility_pack:
             to_give = [
                     # Repair
                     'utility_repair_03',
