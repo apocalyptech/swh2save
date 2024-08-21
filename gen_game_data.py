@@ -17,6 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 import os
+import io
 import sys
 import zipfile
 import datetime
@@ -24,12 +25,23 @@ import textwrap
 
 import xml.etree.ElementTree as ET
 
+
+def quote_string(string, to_quote='"'):
+    """
+    Quote a string which is being passed inside our constructed Python code.
+    This is pretty stupid, but since this stuff gets looked-over by hand
+    after generation, it's good enough for me.
+    """
+    return string.replace(to_quote, f'\\{to_quote}')
+
+
 def main():
 
     # TODO: I'd eventually like to make this more general, autodetect install
     # locations, and at least attempt to make it cross-platform.
 
     game_dir = '/games/Steam/steamapps/common/SteamWorld Heist 2'
+    language = 'en'
     
     core_dir = os.path.join(game_dir, 'Bundle', 'Core')
 
@@ -58,12 +70,69 @@ def main():
             #
             # You should have received a copy of the GNU General Public License
             # along with this program.  If not, see <http://www.gnu.org/licenses/>
+
+
+            class GameData:
+
+                def __init__(self, name, label):
+                    self.name = name
+                    self.label = label
+
+                def __str__(self):
+                    return f'{self.label} ({self.name})'
+
+                def __lt__(self, other):
+                    if isinstance(other, GameData):
+                        return self.label.casefold() < other.label.casefold()
+                    else:
+                        return self.label.casefold() < other.casefold()
+
+                def __gt__(self, other):
+                    if isinstance(other, GameData):
+                        return self.label.casefold() > other.label.casefold()
+                    else:
+                        return self.label.casefold() > other.casefold()
+
+
+            class ShipUpgrade(GameData):
+
+                def __init__(self, name, label, keyitem):
+                    super().__init__(name, label)
+                    self.keyitem = keyitem
+
+
+            class Hat(GameData):
+
+                def __init__(self, name, label):
+                    super().__init__(name, label)
+
             """), file=odf)
-        print('', file=odf)
 
         with zipfile.ZipFile(os.path.join(core_dir, 'Game.pak')) as game_pak:
 
-            # First up: a list of ship upgrades
+            # First up: load in strings for our selected language
+            # TODO: really I should be supporting all languages the game supports.
+            # I realize that doing this from the start is almost certainly simpler
+            # than doing it later, but I'm feeling lazy in the short-term.
+            labels = {}
+            with game_pak.open(f'Language/{language}.csv') as language_csv:
+                # Not actually using a CSV processor.  Will I regret it?  Time will tell!
+                text_file = io.TextIOWrapper(language_csv)
+                for line in text_file:
+                    line = line.strip()
+                    if line == '':
+                        continue
+                    if line.startswith('#'):
+                        continue
+                    parts = line.split("\t")
+                    # The fields seem to be: key, translation, comment
+                    # comment is optional
+                    if len(parts) < 2:
+                        continue
+                    labels[parts[0]] = parts[1]
+
+
+            # Now a list of ship upgrades
             # TODO: get English labels for these as well
             with game_pak.open('Definitions/ship_upgrades.xml') as ship_upgrades:
 
@@ -77,7 +146,6 @@ def main():
                 print('', file=odf)
 
             # Now hats!
-            # TODO: English labels, etc, etc.
             with game_pak.open('Definitions/hats.xml') as hat_xml:
 
                 print('HATS = {', file=odf)
@@ -85,7 +153,11 @@ def main():
                 for child in root:
                     if 'Abstract' in child.attrib:
                         continue
-                    print("        '{}',".format(child.attrib['Name']), file=odf)
+                    print("        '{}': Hat('{}', \"{}\"),".format(
+                        child.attrib['Name'],
+                        child.attrib['Name'],
+                        quote_string(labels[child.attrib['Name']]),
+                        ), file=odf)
                 print('        }', file=odf)
                 print('', file=odf)
 

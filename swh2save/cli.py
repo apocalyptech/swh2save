@@ -49,6 +49,8 @@ def print_columns(
         padding='  ',
         prefix='- ',
         columns=None,
+        lookup=None,
+        lookup_sort=False,
         ):
     """
     Function to take a list of `data` and output in columns, if we can.
@@ -69,9 +71,27 @@ def print_columns(
 
     `columns` can be used to force a certain number of columns without
     doing any width checking.
+
+    `lookup` is a dict which, if defined, will be used to see if we have
+    a better way to show the data.  This is assumed to have values which
+    are GameData objects, but it could be anything.
+
+    `lookup_sort`, if True, will cause our `lookup`-processed objects to
+    be sorted after doing the conversion.  Otherwise the order will be
+    left as-is.
     """
     if len(data) == 0:
         return
+    if lookup is not None:
+        new_data = []
+        for item in data:
+            if item in lookup:
+                new_data.append(lookup[item])
+            else:
+                new_data.append(item)
+        if lookup_sort:
+            new_data.sort()
+        data = new_data
     str_data = [f'{prefix}{item}' for item in data]
     force_output = False
     if columns is None:
@@ -212,9 +232,9 @@ def main():
         print(f'Items in inventory: {len(save.inventory.items)}')
         if args.verbose:
             print_columns(save.inventory.items, columns=columns)
-        print(f'Unlocked hats: {len(save.inventory.hats)}')
+        print(f'Unlocked hats: {len(save.inventory.hats)}/{len(HATS)}')
         if args.verbose:
-            print_columns(save.inventory.hats, columns=columns)
+            print_columns(sorted(save.inventory.hats), columns=columns, lookup=HATS, lookup_sort=True)
 
     elif args.check:
 
@@ -294,7 +314,7 @@ def main():
         #        do_save = True
 
         if args.unlock_hats:
-            needed_hats = HATS ^ set(save.inventory.hats)
+            needed_hats = set(HATS.keys()) ^ set(save.inventory.hats)
             if len(needed_hats) == 0:
                 print(f'Skipping hat unlocks; all hats are already unlocked')
             else:
