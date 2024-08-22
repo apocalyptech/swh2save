@@ -93,6 +93,13 @@ def main():
                     else:
                         return self.label.casefold() > other.casefold()
 
+            class Crew(GameData):
+                pass
+
+
+            class KeyItem(GameData):
+                pass
+
 
             class Upgrade(GameData):
 
@@ -100,10 +107,6 @@ def main():
                     super().__init__(name, label)
                     self.keyitem = keyitem
                     self.category = category
-
-
-            class KeyItem(GameData):
-                pass
 
 
             class Hat(GameData):
@@ -145,6 +148,26 @@ def main():
                     if len(parts) < 2:
                         continue
                     labels[parts[0]] = parts[1]
+
+
+            # Do crew first
+            with game_pak.open('Definitions/personas.xml') as persona_xml:
+
+                print('CREW = {', file=odf)
+                root = ET.fromstring(persona_xml.read())
+                for child in root:
+                    if 'Abstract' in child.attrib:
+                        continue
+                    if 'Template' not in child.attrib or child.attrib['Template'] != 'CREW':
+                        continue
+                    print("        '{}': Crew(".format(child.attrib['Name']), file=odf)
+                    print("            '{}',".format(child.attrib['Name']), file=odf)
+                    print("            \"{}\",".format(
+                        quote_string(labels['persona_{}'.format(child.attrib['Name'])])
+                        ), file=odf)
+                    print("            ),", file=odf)
+                print('        }', file=odf)
+                print('', file=odf)
 
 
             # Get a list of keyitems.  Needed also for proper upgrade handling

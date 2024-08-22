@@ -433,7 +433,7 @@ def main():
         print(f' - Water (money): {save.resources.water}')
         print(f' - Fragments: {save.resources.fragments}')
         print(f'Crew Unlocked: {len(save.header.crew)}')
-        print_columns(save.header.crew)
+        print_columns(sorted(save.header.crew), lookup=CREW, lookup_sort=True)
         print(f'Unlocked Sub Upgrades: {len(save.ship.upgrades)}/{len(UPGRADES)}')
         if args.verbose:
             print_columns(sorted(save.ship.upgrades), columns=columns, lookup=UPGRADES, lookup_sort=True)
