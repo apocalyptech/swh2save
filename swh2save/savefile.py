@@ -243,6 +243,9 @@ class Header(Chunk):
         self.cur_location = df.read_string()
         self.cur_region = df.read_string()
         self.cur_quest = df.read_string()
+
+        # Note: merely adding a new crew string to this list does *not* properly
+        # unlock crew in the game.
         self.crew = []
         # Not sure yet if this is a "standard" string list, so not abstracting it.
         num_crew = df.read_uint8()
@@ -365,6 +368,75 @@ class InventoryItem(Chunk):
         return InventoryItem(odf)
 
 
+class Loadout(Chunk):
+    """
+    `CrLo` chunk -- Character Loadout, I guess
+    """
+
+    def __init__(self, df, items_by_id):
+        super().__init__(df, 'CrLo')
+        self.items_by_id = items_by_id
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.name = self.df.read_string()
+        self.cur_weapon = self._get_inventory_item_or_id()
+
+        # In all my saves, this value seems to always be 3
+        self.unknown = self.df.read_varint()
+
+        self.utility_1 = self._get_inventory_item_or_id()
+        self.utility_2 = self._get_inventory_item_or_id()
+        self.utility_3 = self._get_inventory_item_or_id()
+        self.cur_hat = self.df.read_string()
+
+        # Often 0 on my saves, but I've also seen 1; I suspect
+        # that means "used in a mission already"
+        self.state = self.df.read_uint32()
+
+        #print(f'{self.zero} {self.name} | {self.unknown_3} | {self.state}')
+
+
+    def _get_inventory_item_or_id(self):
+        """
+        Reads a varint and attempts to return the matching inventory item
+        based on ID.  Will just return the number if not found (as will
+        happen for values of zero, for instance).  Theoretically any nonzero
+        value we find here should exist in inventory, but whatever.
+        """
+        item_id = self.df.read_varint()
+        if item_id in self.items_by_id:
+            return self.items_by_id[item_id]
+        else:
+            return item_id
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_string(self.name)
+        self._write_inventory_item(self.cur_weapon, odf)
+        odf.write_varint(self.unknown)
+        self._write_inventory_item(self.utility_1, odf)
+        self._write_inventory_item(self.utility_2, odf)
+        self._write_inventory_item(self.utility_3, odf)
+        odf.write_string(self.cur_hat)
+        odf.write_uint32(self.state)
+
+
+    def _write_inventory_item(self, value, odf):
+        """
+        Given an inventory var, write out the item ID whether it's a number
+        or an InventoryItem object
+        """
+        if type(value) == InventoryItem:
+            odf.write_varint(value.id)
+        else:
+            odf.write_varint(value)
+
+
 class Inventory(Chunk):
     """
     `Inve` chunk -- Inventory!
@@ -381,9 +453,12 @@ class Inventory(Chunk):
 
         # On to the inventory...
         self.items = []
+        self.items_by_id = {}
         num_items = self.df.read_varint()
         for _ in range(num_items):
-            self.items.append(InventoryItem(self.df))
+            new_item = InventoryItem(self.df)
+            self.items.append(new_item)
+            self.items_by_id[new_item.id] = new_item
             #print(f' - Got item: {self.items[-1]} ({len(self.items)}/{num_items})')
 
         # No clue what this data is
@@ -415,6 +490,12 @@ class Inventory(Chunk):
 
         # Captain Leeway's hat
         self.leeway_hat = self.df.read_string()
+
+        # Character Loadouts
+        self.loadouts = []
+        num_chars = self.df.read_uint8()
+        for _ in range(num_chars):
+            self.loadouts.append(Loadout(self.df, self.items_by_id))
 
 
     def _write_to(self, odf):
@@ -451,6 +532,11 @@ class Inventory(Chunk):
         # Leeway's Hat
         odf.write_string(self.leeway_hat)
 
+        # Character Loadout
+        odf.write_uint8(len(self.loadouts))
+        for loadout in self.loadouts:
+            loadout.write_to(odf)
+
 
     def add_item(self, item_name, item_flags):
         """
@@ -458,28 +544,6 @@ class Inventory(Chunk):
         """
         self.last_inventory_id += 1
         self.items.append(InventoryItem.create_new(self.last_inventory_id, item_name, item_flags))
-
-
-#class Loadout(Chunk):
-#    """
-#    `CrLo` chunk -- Character Loadout?  Possibly stretching a bit
-#    with the name there.
-#    """
-#
-#    def __init__(self, df):
-#        super().__init__(df, 'CrLo')
-#
-#        self.unknown_1 = self.df.read_uint8()
-#        self.name = self.df.read_string()
-#
-#        import sys
-#        sys.exit(0)
-#
-#
-#    def _write_to(self, odf):
-#
-#        odf.write_uint8(self.unknown_1)
-#        odf.write_string(self.name)
 
 
 class Savefile(Datafile):
@@ -528,12 +592,6 @@ class Savefile(Datafile):
 
         # Inventory
         self.inventory = Inventory(self)
-
-        # Character Loadout
-        #self.loadouts = []
-        #num_chars = self.read_uint8()
-        #for _ in range(num_chars):
-        #    self.loadouts.append(Loadout(self))
 
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
