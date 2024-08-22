@@ -547,6 +547,41 @@ class Inventory(Chunk):
         self.items.append(InventoryItem.create_new(self.last_inventory_id, item_name, item_flags))
 
 
+class ReDe(Chunk):
+    """
+    `ReDe` chunk.
+    I'm *pretty* sure this is basically just a list of characters who are
+    ready to go (ie: ReDe); at first glance it seems to mostly just contain
+    a list of chars we haven't recruited yet.  Not totally sure, though.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'ReDe')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.chars = []
+        num_chars = self.df.read_varint()
+        for _ in range(num_chars):
+            self.chars.append(self.df.read_string())
+
+        # On my saves, ranges from 0-4.  Bigger values in general when
+        # there are more ready chars in the list, though that's not
+        # entirely predictive.
+        self.unknown = self.df.read_uint32()
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_varint(len(self.chars))
+        for char in self.chars:
+            odf.write_string(char)
+        odf.write_uint32(self.unknown)
+
+
 class Savefile(Datafile):
 
     # Maximum savefile version that we can parse
@@ -606,6 +641,29 @@ class Savefile(Datafile):
         for _ in range(num_crew):
             self.crew.append(self.read_string())
 
+        # And then another, shorter crew list.  Weird
+        self.crew_subset = []
+        num_crew_subset = self.read_uint8()
+        for _ in range(num_crew_subset):
+            self.crew_subset.append(self.read_string())
+
+        # More data which feels like we must still be inside another chunk.
+        # Maybe we're really not even out of the header yet?  Anyway.
+        has_rede_chunk = self.read_uint8()
+        if has_rede_chunk != 0 and has_rede_chunk != 1:
+            # I'm not sure if this is a flag or a count; would like to know
+            # if we get other numbers
+            raise RuntimeError('Unknown ReDe chunk signifier: {self.has_rede_chunk}')
+        if has_rede_chunk == 0:
+            self.rede = None
+        else:
+            rede_zero = self.read_uint8()
+            if rede_zero != 0:
+                # Likewise, the zero here weirds me out.  Prefer erroring out
+                # if I ever see this not zero.
+                raise RuntimeError('Unknown ReDe chunk prefix: {rede_zero}')
+            self.rede = ReDe(self)
+
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
         self.remaining = self.read()
@@ -654,6 +712,19 @@ class Savefile(Datafile):
         odf.write_uint8(len(self.crew))
         for crew in self.crew:
             odf.write_string(crew)
+
+        # Crew subset
+        odf.write_uint8(len(self.crew_subset))
+        for crew in self.crew_subset:
+            odf.write_string(crew)
+
+        # ReDe
+        if self.rede is None:
+            odf.write_uint8(0)
+        else:
+            odf.write_uint8(1)
+            odf.write_uint8(0)
+            self.rede.write_to(odf)
 
         # Any remaining data at the end that we're not sure of
         #odf.write(self.remaining)
