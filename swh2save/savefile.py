@@ -146,9 +146,10 @@ class Ship(Chunk):
         for _ in range(num_equipped):
             self.equipped.append(df.read_string())
 
-        # Next up, item IDs of some sort?  This uses varints; I wonder how
-        # often those are technically used in other places that I may have
-        # missed...
+        # Next up, item IDs for each of the equipped items.  These relate
+        # to the item IDs in our inventory (to know which one in particular
+        # is equipped), but we haven't read the inventory at this point.
+        # So we'll just leave them as IDs.
         self.item_ids = []
         num_item_ids = df.read_uint8()
         for _ in range(num_item_ids):
@@ -593,6 +594,18 @@ class Savefile(Datafile):
         # Inventory
         self.inventory = Inventory(self)
 
+        # Another character list?  We sort of already had this in the header,
+        # though; weird.  The last stuff that I put in the Inventory chunk
+        # was Character Loadouts, which sort of made sense, but not for this.
+        # Maybe Ship and Inventory are a part of GameResources?  Anyway,
+        # just putting here for now, which makes it outside a chunk so that's
+        # probably not right.  The list does seem to generally be in a
+        # different order than the one in the header.
+        self.crew = []
+        num_crew = self.read_uint8()
+        for _ in range(num_crew):
+            self.crew.append(self.read_string())
+
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
         self.remaining = self.read()
@@ -636,6 +649,11 @@ class Savefile(Datafile):
 
         # Inventory
         self.inventory.write_to(odf)
+
+        # Crew list, again?
+        odf.write_uint8(len(self.crew))
+        for crew in self.crew:
+            odf.write_string(crew)
 
         # Any remaining data at the end that we're not sure of
         #odf.write(self.remaining)
