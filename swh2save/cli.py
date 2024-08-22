@@ -241,19 +241,51 @@ def main():
     parser.add_argument('--add-upgrade',
             action=FlexiListAction,
             help="""
-                Unlock specific upgrades.  This will also unlock key items as
+                Unlock specific upgrades.  This will also unlock Key Items as
                 necessary.  Can be specified more than once, and/or separate upgrade names
                 with commas.  Specify `list` or `help` to get a list of valid upgrades.
                 """,
             )
 
-    # TODO: I'd like to be able to unlock these by category, as well...
+    parser.add_argument('--unlock-main-upgrades',
+            action='store_true',
+            help="""
+                Unlock all upgrades ordinarily unlocked by the main Sub Upgrades console
+                on your ship.  This includes unlocking the other upgrade stations, sub
+                equipment slots, a couple bunk beds, as well as various crew bonuses
+                (cogs, utility slots, health, XP bonus, etc).  Upgrades you haven't
+                "properly" revealed through quest progress won't show up in the list
+                on the console, but their effects should still be active.
+                """,
+            )
+
+    parser.add_argument('--unlock-item-upgrades',
+            action='store_true',
+            help="""
+                Unlock all upgrades acquired by items, often as part of quest
+                progression.  This includes sub improvements such as boosting/diving,
+                and the seven bonuses given by celestial gears.  This will also unlock
+                Key Items as necessary.
+                """,
+            )
+
+    parser.add_argument('--unlock-job-upgrades',
+            action='store_true',
+            help="""
+                Unlock all upgrades ordinarily unlocked by the Job Upgrade station on
+                the sub.
+                """,
+            )
+
     parser.add_argument('--unlock-upgrades',
             action='store_true',
             help="""
-                Unlock all upgrades.  This will also unlock key items as necessary.  Note
-                that some upgrades are dependent on story triggers to actually become active,
-                so you may not actually have access to all of them immediately.
+                Unlock all upgrades.  This is equivalent to specifying each of the three
+                individual `--unlock-*-upgrades` options.  This will also unlock Key Items as
+                necessary.  Note that on the main Sub Upgrades console, upgrades you
+                haven't "properly" revealed through quest progress won't show up in the list
+                on the console, but their effects will still be active.  NOTE: this does not
+                yet include any upgrades from the Personal Upgrade console.
                 """,
             )
 
@@ -263,7 +295,7 @@ def main():
                 Unlock specific Key Items.  These are often tied to ship upgrades, and
                 the game should automatically apply the ship upgrade if the key item is in
                 your inventory.  Can be specified more than once, and/or separate item names
-                with commas.  Specify `list` or `help` to get a list of valid key items.
+                with commas.  Specify `list` or `help` to get a list of valid Key Items.
                 """,
             )
 
@@ -271,7 +303,7 @@ def main():
             action='store_true',
             help="""
                 Unlock all Key Items.  These are often tied to ship upgrades, and the game
-                should automatically apply the ship upgrade when key items are in your
+                should automatically apply the ship upgrade when Key Items are in your
                 inventory.
                 """,
             )
@@ -520,12 +552,30 @@ def main():
 
         # Upgrades
         added_key_items_from_upgrades = False
-        if args.unlock_upgrades or args.add_upgrade:
+        if args.unlock_upgrades or args.add_upgrade \
+                or args.unlock_main_upgrades \
+                or args.unlock_item_upgrades \
+                or args.unlock_job_upgrades:
             if args.unlock_upgrades:
-                requested_upgrades = UPGRADES.keys()
+                requested_upgrades = set(UPGRADES.keys())
             else:
-                requested_upgrades = args.add_upgrade
-            needed_upgrades = set(requested_upgrades) - set(save.ship.upgrades)
+                requested_upgrades = set()
+                if args.add_upgrade:
+                    requested_upgrades |= set(args.add_upgrade)
+                for upgrade in UPGRADES.values():
+                    match upgrade.category:
+                        case 'main':
+                            if args.unlock_main_upgrades:
+                                requested_upgrades.add(upgrade.name)
+                        case 'ability':
+                            if args.unlock_item_upgrades:
+                                requested_upgrades.add(upgrade.name)
+                        case 'guildhall':
+                            if args.unlock_job_upgrades:
+                                requested_upgrades.add(upgrade.name)
+                        case _:
+                            raise RuntimeError('Unknown upgrade category for {upgrade.name}: {upgrade.category}')
+            needed_upgrades = requested_upgrades - set(save.ship.upgrades)
             if len(needed_upgrades) == 0:
                 print(f'- Skipping upgrade unlocks; all requested upgrades are already unlocked')
             else:
@@ -542,7 +592,7 @@ def main():
                 needed_keyitems = required_keyitems - set([i.name for i in save.inventory.items])
                 if len(needed_keyitems) > 0:
                     added_key_items_from_upgrades = True
-                    print(f' - Also unlocking {len(needed_keyitems)} needed key items')
+                    print(f' - Also unlocking {len(needed_keyitems)} needed Key Items')
                     for item in sorted(needed_keyitems):
                         save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
                 do_save = True
@@ -555,13 +605,13 @@ def main():
                 requested_items = args.add_key_item
             needed_keyitems = set(requested_items) - set([i.name for i in save.inventory.items])
             if len(needed_keyitems) == 0:
-                print(f'- Skipping key unlocks; all requested key items are already unlocked')
+                print(f'- Skipping key unlocks; all requested Key Items are already unlocked')
             else:
                 if added_key_items_from_upgrades:
                     extra = ' more'
                 else:
                     extra = ''
-                print(f'- Unlocking {len(needed_keyitems)}{extra} key items')
+                print(f'- Unlocking {len(needed_keyitems)}{extra} Key Items')
                 for item in sorted(needed_keyitems):
                     save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
                 do_save = True
