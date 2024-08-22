@@ -1,8 +1,10 @@
 DISCLAIMER
 ==========
 
-This is very pre-alpha, and still in development.  At the moment it can't do
-much of use really; time will tell if it gets more fully-functional!
+This is in an alpha state; very much still in development.  It's starting to
+get some decent functionality, and it's been awhile since I've generated
+a corrupt savefile, but definitely don't think this is a finished product!
+Back up your saves and use with caution!
 
 SteamWorld Heist II CLI Save Editor
 ===================================
@@ -11,11 +13,30 @@ This is a Python-based CLI save editor for the excellent
 [SteamWorld Heist II](https://store.steampowered.com/app/2396240) from
 Thunderful Development.
 
-At time of writing, as the disclaimer above mentions, it is pre-alpha and
-can't do much.  As such, I will *not* be including usage instructions and
-the like, though if you're familiar enough with running Python stuff from
-commandline, feel free to give it a go!  Keep in mind that functionality is
-currently quite limited.
+Given the early state of development, and the fact that I'm still not
+completely sure about it consistently generating valid saves, I'm not
+including any usage instructions at the moment.  If you're familiar enough
+with running Python stuff from commandline, though, feel free to give it
+a go!
+
+At time of writing, here's the stuff you can edit:
+- Water (money)
+- Fragments
+- Upgrades:
+  - Sub Upgrade panel
+  - Job Upgrade panel
+  - Various other item-based upgrades (sub dive/ram, etc)
+  - *(Personal Upgrades aren't in yet!)*
+- Inventory
+  - Weapons
+  - Equippable Gear
+  - Sub Equipment
+  - Key Items
+  - Hats!
+
+I may not be the best at keeping this README updated while still in
+development, so it's possible there'll be more stuff by the time you read
+this.
 
 WARNING
 =======
