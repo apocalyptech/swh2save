@@ -364,6 +364,15 @@ def main():
             help='Adds a collection of endgame utility (equippable) items to your inventory',
             )
 
+    parser.add_argument('--endgame-pack',
+            action='store_true',
+            help="""
+                Adds a collection of endgame ship equipment, weapons, and equippable utility
+                items to your inventory.  This is equivalent to specifying all of the other
+                --endgame-*-pack options.
+                """,
+            )
+
     parser.add_argument('filename',
             type=str,
             nargs=1,
@@ -421,6 +430,12 @@ def main():
         columns = 1
     else:
         columns = None
+
+    # --engame-pack is a conglomerate
+    if args.endgame_pack:
+        args.endgame_ship_pack = True
+        args.endgame_weapon_pack = True
+        args.endgame_utility_pack = True
 
     # Load in the savefile
     save = Savefile(args.filename)
