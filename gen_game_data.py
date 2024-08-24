@@ -209,19 +209,31 @@ def main():
                     keyitem = None
                     optional_layer = None
                     upgrade_type = None
+                    name_string_id = None
                     for inner_child in child:
-                        if inner_child.tag == 'KeyItem':
-                            keyitem = inner_child.text
-                        elif inner_child.tag == 'ShowOptionalLayer':
-                            optional_layer = inner_child.text
-                        elif inner_child.tag == 'Type':
-                            upgrade_type = inner_child.text
-                    if optional_layer is not None:
+                        match inner_child.tag:
+                            case 'KeyItem':
+                                keyitem = inner_child.text
+                            case 'ShowOptionalLayer':
+                                optional_layer = inner_child.text
+                            case 'Type':
+                                upgrade_type = inner_child.text
+                            case 'NameStringId':
+                                name_string_id = inner_child.text
+                    # Some slightly dodgy attempts to find the name shown in the game,
+                    # but it seems to work fine.
+                    if name_string_id is not None:
+                        label = labels[name_string_id]
+                    elif optional_layer is not None:
                         label = labels[optional_layer]
                     elif keyitem is not None:
                         label = keyitems[keyitem]
                     else:
-                        label = child.attrib['Name']
+                        test_label_name = 'ship_upgrade_{}'.format(child.attrib['Name'])
+                        if test_label_name in labels:
+                            label = labels[test_label_name]
+                        else:
+                            label = child.attrib['Name']
                     if upgrade_type is None \
                             and 'Template' in child.attrib \
                             and child.attrib['Template'] in upgrade_template_types:
