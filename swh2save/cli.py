@@ -308,6 +308,17 @@ def main():
                 """,
             )
 
+    parser.add_argument('--unlock-sub-abilities',
+            action='store_true',
+            help="""
+                Unlocks the upgrades and key items necessary to give the sub its full suite
+                of abilities (boosting, diving, ram, shield, and atomic engine).  This also
+                ends up unlocking a geiger counter level as a side effect.  This is equivalent
+                to using the arguments `--add-upgrade ship_boost_00,dive_00,dive_02,geiger_counter_01
+                --add-key-item keyitem_ship_ram,keyitem_ship_shield`
+                """,
+            )
+
     parser.add_argument('--add-hat',
             action=FlexiListAction,
             help="""
@@ -381,6 +392,36 @@ def main():
 
     args = parser.parse_args()
     args.filename = args.filename[0]
+
+    # Process some meta-commands for unlocks
+    if args.unlock_sub_abilities:
+        if args.add_upgrade is None:
+            args.add_upgrade = []
+        upgrade_set = set(args.add_upgrade)
+        if args.add_key_item is None:
+            args.add_key_item = []
+        keyitem_set = set(args.add_key_item)
+        for upgrade in [
+                'ship_boost_00',
+                'dive_00',
+                # We want dive_02, which is provided by the atomic_engine keyitem.  That
+                # same keyitem also provides geiger_counter_01, which IMO we don't really
+                # care about, but since we'll get it anyway from the engine, may as well
+                # unlock it 'properly' here.
+                'dive_02',
+                'geiger_counter_01',
+                ]:
+            if upgrade not in upgrade_set:
+                args.add_upgrade.append(upgrade)
+        # The above upgrades will add in the required keyitems, but there are a couple
+        # key items which aren't associated with entries in the upgrade list.  So we're
+        # adding those 'by hand,' so to speak.
+        for keyitem in [
+                'keyitem_ship_ram',
+                'keyitem_ship_shield',
+                ]:
+            if keyitem not in keyitem_set:
+                args.add_key_item.append(keyitem)
 
     # If we need to do some info dumps, do them now before we even try loading
     # a file.
