@@ -210,6 +210,7 @@ def main():
                     optional_layer = None
                     upgrade_type = None
                     name_string_id = None
+                    label_suffixes = []
                     for inner_child in child:
                         match inner_child.tag:
                             case 'KeyItem':
@@ -220,6 +221,25 @@ def main():
                                 upgrade_type = inner_child.text
                             case 'NameStringId':
                                 name_string_id = inner_child.text
+                            case 'CrewStats':
+                                for even_more_inner_child in inner_child:
+                                    match even_more_inner_child.tag:
+                                        case 'HitPoints':
+                                            label_suffixes.append('Health')
+                                        case 'MoveDistance':
+                                            label_suffixes.append('Move Distance')
+                                        case 'AoERange':
+                                            label_suffixes.append('Aura')
+                                        case 'MeleeDamage':
+                                            label_suffixes.append('Melee Damage')
+                                        case 'CogCapacity':
+                                            label_suffixes.append('Cogs')
+                                        case 'Aim':
+                                            label_suffixes.append('Aim')
+                                        case 'Damage':
+                                            label_suffixes.append('Damage')
+                            case 'ExperienceBonus':
+                                label_suffixes.append('XP Bonus')
                     # Some slightly dodgy attempts to find the name shown in the game,
                     # but it seems to work fine.
                     if name_string_id is not None:
@@ -234,6 +254,16 @@ def main():
                             label = labels[test_label_name]
                         else:
                             label = child.attrib['Name']
+                    if label_suffixes:
+                        # These are intended for the Celestial Gears, but they show up in
+                        # other upgrades too.  That's mostly fine, though I want to prevent
+                        # it from adding `(Cogs)` to the `Extra Cog` upgrade, since that's
+                        # kind of redundant and weird-looking.
+                        if label != 'Extra Cog':
+                            label = '{} ({})'.format(
+                                    label,
+                                    ', '.join(label_suffixes),
+                                    )
                     if upgrade_type is None \
                             and 'Template' in child.attrib \
                             and child.attrib['Template'] in upgrade_template_types:

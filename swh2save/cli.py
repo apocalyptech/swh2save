@@ -319,6 +319,15 @@ def main():
                 """,
             )
 
+    parser.add_argument('--unlock-gears',
+            action='store_true',
+            help="""
+                Unlocks the seven celestial gear upgrades (generally acquired when you
+                reach maximum reputation in an area).  Equivalent to using arguments like
+                `--add-upgrade celestial_gear_01` for all seven gear numbers.
+                """,
+            )
+
     parser.add_argument('--add-hat',
             action=FlexiListAction,
             help="""
@@ -422,6 +431,15 @@ def main():
                 ]:
             if keyitem not in keyitem_set:
                 args.add_key_item.append(keyitem)
+
+    # More meta-commands
+    if args.unlock_gears:
+        if args.add_upgrade is None:
+            args.add_upgrade = []
+        upgrade_set = set(args.add_upgrade)
+        for upgrade_name in UPGRADES.keys():
+            if upgrade_name.startswith('celestial_gear_') and upgrade_name not in upgrade_set:
+                args.add_upgrade.append(upgrade_name)
 
     # If we need to do some info dumps, do them now before we even try loading
     # a file.
