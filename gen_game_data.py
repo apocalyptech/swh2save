@@ -22,6 +22,7 @@ import sys
 import zipfile
 import datetime
 import textwrap
+import argparse
 
 import xml.etree.ElementTree as ET
 
@@ -37,13 +38,44 @@ def quote_string(string, to_quote='"'):
 
 def main():
 
-    # TODO: I'd eventually like to make this more general, autodetect install
-    # locations, and at least attempt to make it cross-platform.
+    # TODO: There's various things this util (and the repo in general) should maybe
+    # be doing instead of the way things happen now.  Some thoughts:
+    #
+    #  1. We *could* be reading in this information dynamically at runtime, rather
+    #     than pre-generating data extracts.  I'd kind of like this util to be
+    #     fully-functional even without a local SWH2 install, though, and this way
+    #     we can't be surprised by changes to the game's data structures.
+    #
+    #  2. We could be storing this as TOML/JSON/YAML/whatever rather than a Python
+    #     file.  At the moment I'm happy enough with Python, though.
+    #
+    #  3. Really we should be supporting all languages that SWH2 has translations
+    #     for (at least for the data we're pulling out from here).  At the moment
+    #     this only supports pulling a single location
+    #
+    #  4. Autodetection of game install location (check Steam config, etc).  Ideally
+    #     supporting Windows as well.  This would be more important if we were
+    #     reading the info dynamically at runtime.
 
-    game_dir = '/games/Steam/steamapps/common/SteamWorld Heist 2'
-    language = 'en'
+    parser = argparse.ArgumentParser(
+            description='Generate gamedata.py for swh2save',
+            )
+
+    parser.add_argument('-g', '--gamedir',
+            type=str,
+            default='/games/Steam/steamapps/common/SteamWorld Heist 2',
+            help='Location of SWH2 install',
+            )
+
+    parser.add_argument('-l', '--language',
+            type=str,
+            default='en',
+            help='The language to use for pulling in text labels',
+            )
+
+    args = parser.parse_args()
     
-    core_dir = os.path.join(game_dir, 'Bundle', 'Core')
+    core_dir = os.path.join(args.gamedir, 'Bundle', 'Core')
 
     output_file = os.path.join('swh2save', 'gamedata.py')
 
@@ -139,7 +171,7 @@ def main():
             # I realize that doing this from the start is almost certainly simpler
             # than doing it later, but I'm feeling lazy in the short-term.
             labels = {}
-            with game_pak.open(f'Language/{language}.csv') as language_csv:
+            with game_pak.open(f'Language/{args.language}.csv') as language_csv:
                 # Not actually using a CSV processor.  Will I regret it?  Time will tell!
                 text_file = io.TextIOWrapper(language_csv)
                 for line in text_file:
