@@ -690,6 +690,92 @@ class LootTableStatus(Chunk):
                 deck.write_to(odf)
 
 
+class LootDeckData(Chunk):
+    """
+    `LoDD` chunk.  Loot Deck... data?
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'LoDD')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.items = []
+        num_items = self.df.read_varint()
+        for _ in range(num_items):
+            name = self.df.read_string()
+            self.items.append(name)
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_varint(len(self.items))
+        for name in self.items:
+            odf.write_string(name)
+
+
+class LootDeckStatus(Chunk):
+    """
+    `LoDe` chunk.  Loot Deck status.  Related to the LTma chunks above.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'LoDe')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.decks = []
+        num_decks = self.df.read_varint()
+        for _ in range(num_decks):
+            deck_name = self.df.read_string()
+            lodd = LootDeckData(self.df)
+            self.decks.append((deck_name, lodd))
+
+        # Debug!
+        #for deck_name, lodd in self.decks:
+        #    print(f'Deck: {deck_name}')
+        #    for item in lodd.items:
+        #        print(f' - {item}')
+
+        # Various unknown data here.  The first six bytes for nearly all
+        # my saves were: 19 E5 F3 28 00 01.  The only exceptions were
+        # at the *very* beginning where they were all zeroes; and one other
+        # where the last byte was zero.  No clue what to do with 'em, so
+        # just reading as bytes for now.
+        self.unknown_1 = self.df.read_uint8()
+        self.unknown_2 = self.df.read_uint8()
+        self.unknown_3 = self.df.read_uint8()
+        self.unknown_4 = self.df.read_uint8()
+        self.unknown_5 = self.df.read_uint8()
+        self.unknown_6 = self.df.read_uint8()
+
+        # Then one more unknown which, fo rall my saves, seems to be a
+        # uint32 which is always 1
+        self.unknown_one = self.df.read_uint32()
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_varint(len(self.decks))
+        for deck_name, lodd in self.decks:
+            odf.write_string(deck_name)
+            lodd.write_to(odf)
+
+        odf.write_uint8(self.unknown_1)
+        odf.write_uint8(self.unknown_2)
+        odf.write_uint8(self.unknown_3)
+        odf.write_uint8(self.unknown_4)
+        odf.write_uint8(self.unknown_5)
+        odf.write_uint8(self.unknown_6)
+        odf.write_uint32(self.unknown_one)
+
+
 class Savefile(Datafile):
 
     # Maximum savefile version that we can parse
@@ -775,6 +861,9 @@ class Savefile(Datafile):
         # Loot Table status
         self.loot_tables = LootTableStatus(self)
 
+        # Loot Deck status
+        self.lode = LootDeckStatus(self)
+
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
         self.remaining = self.read()
@@ -839,6 +928,9 @@ class Savefile(Datafile):
 
         # Loot Table Status
         self.loot_tables.write_to(odf)
+
+        # Loot Deck status
+        self.lode.write_to(odf)
 
         # Any remaining data at the end that we're not sure of
         #odf.write(self.remaining)
