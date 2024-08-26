@@ -557,23 +557,21 @@ class ReDe(Chunk):
     a structure detailing some loot groups.  For instance, from some debug output
     there:
 
-         - Inner Group 3:
-            - LTde: deck_utility_and_rare
+         - Deck 3: deck_utility_and_rare
             - ReDe:
                0. combat_utility
-               1. combat_utility
+               1. combat_rare
                2. combat_utility
-               3. combat_rare
-         - Inner Group 4:
-            - LTde: deck_resources
+               3. combat_utility
+         - Deck 4: deck_resources
             - ReDe:
-               0. combat_money
+               0. combat_fragments
                1. combat_money
-               2. combat_fragments
+               2. combat_money
                3. combat_money
-               4. combat_fragments
+               4. combat_money
                5. combat_money
-               6. combat_money
+               6. combat_fragments
 
     So yeah, not really sure.
     """
@@ -606,10 +604,10 @@ class ReDe(Chunk):
         odf.write_uint32(self.unknown)
 
 
-class LTde(Chunk):
+class LootTableDeck(Chunk):
     """
-    `LTde` chunk.
-    "LT" presumably refers to "loot," "de" might be "default"?
+    `LTde` chunk.  A single "deck" inside a Loot Table entry.  See the LTma
+    docstring for some more info.
     """
 
     def __init__(self, df):
@@ -619,20 +617,34 @@ class LTde(Chunk):
         # identifiers, actually)
         self.zero = self.df.read_uint8()
 
-        # This seems to just be a string?
-        self.default = self.df.read_string()
+        # Name of the deck
+        self.name = self.df.read_string()
+
+        # Items currently "ready" inside the deck
+        self.rede = ReDe(self.df)
 
 
     def _write_to(self, odf):
 
         odf.write_uint8(self.zero)
-        odf.write_string(self.default)
+        odf.write_string(self.name)
+        self.rede.write_to(odf)
 
 
-class LTma(Chunk):
+class LootTableStatus(Chunk):
     """
-    `LTma` chunk.
-    "LT" presumably refers to "loot," not sure what "ma" refers to though
+    `LTma` chunk.  "LT" refers to "Loot Table," not sure what "ma" refers to though,
+    but there's only one of these in the savegame, and it's clearly holding Loot Table
+    state.
+
+    From the game data, talking about Loot Tables:
+
+		Controls the distribution of loot, for example by guaranteeing that you
+		eventually get weapons for each type of job.
+
+    So this chunk is basically storing the current state of the loot tables, and the
+    "decks" stored within, so that the loot distribution still works inbetween play
+    sessions.
     """
 
     def __init__(self, df):
@@ -646,40 +658,36 @@ class LTma(Chunk):
         # probably isn't the best, but it'll do for now until I figure out
         # what in the world this is actually used for.  (Assuming that ever
         # happens; I suspect I probably don't care about the data in here.)
-        self.things = []
-        num_things = self.df.read_varint()
-        for _ in range(num_things):
-            loot_group = self.df.read_string()
-            num_ltde = self.df.read_varint()
-            items = []
-            for _ in range(num_ltde):
-                ltde = LTde(self.df)
-                rede = ReDe(self.df)
-                items.append((ltde, rede))
-            self.things.append((loot_group, items))
+        self.loot_groups = []
+        num_loot_groups = self.df.read_varint()
+        for _ in range(num_loot_groups):
+            loot_group_name = self.df.read_string()
+            decks = []
+            num_decks = self.df.read_varint()
+            for _ in range(num_decks):
+                decks.append(LootTableDeck(self.df))
+            self.loot_groups.append((loot_group_name, decks))
 
         # report, to see if I can figure out what these things are doing.
-        #for idx, (loot_group, items) in enumerate(self.things):
-        #    print(f'Loot Group {idx}: {loot_group}')
-        #    for inner_idx, (ltde, rede) in enumerate(items):
-        #        print(f' - Inner Group {inner_idx}:')
-        #        print(f'    - LTde: {ltde.default}')
+        #for idx, (loot_group_name, decks) in enumerate(self.loot_groups):
+        #    print(f'Loot Group {idx}: {loot_group_name}')
+        #    for inner_idx, deck in enumerate(decks):
+        #        print(f' - Deck {inner_idx}: {deck.name}')
         #        print(f'    - ReDe:')
-        #        for rede_idx, bloop in enumerate(rede.things):
-        #            print(f'       {rede_idx}. {bloop}')
+        #        for ready_idx, item_name in enumerate(deck.rede.things):
+        #            print(f'       {ready_idx}. {item_name}')
         #    print('')
 
 
     def _write_to(self, odf):
 
         odf.write_uint8(self.zero)
-        odf.write_varint(len(self.things))
-        for loot_group, items in self.things:
-            odf.write_string(loot_group)
-            odf.write_varint(len(items))
-            for ltde, rede in items:
-                ltde.write_to(odf)
-                rede.write_to(odf)
+        odf.write_varint(len(self.loot_groups))
+        for loot_group_name, decks in self.loot_groups:
+            odf.write_string(loot_group_name)
+            odf.write_varint(len(decks))
+            for deck in decks:
+                deck.write_to(odf)
 
 
 class Savefile(Datafile):
@@ -764,8 +772,8 @@ class Savefile(Datafile):
                 raise RuntimeError('Unknown ReDe chunk prefix: {rede_zero}')
             self.rede = ReDe(self)
 
-        # LTma
-        self.ltma = LTma(self)
+        # Loot Table status
+        self.loot_tables = LootTableStatus(self)
 
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
@@ -829,8 +837,8 @@ class Savefile(Datafile):
             odf.write_uint8(0)
             self.rede.write_to(odf)
 
-        # LTma
-        self.ltma.write_to(odf)
+        # Loot Table Status
+        self.loot_tables.write_to(odf)
 
         # Any remaining data at the end that we're not sure of
         #odf.write(self.remaining)
