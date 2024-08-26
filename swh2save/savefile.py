@@ -550,9 +550,32 @@ class Inventory(Chunk):
 class ReDe(Chunk):
     """
     `ReDe` chunk.
-    I'm *pretty* sure this is basically just a list of characters who are
-    ready to go (ie: ReDe); at first glance it seems to mostly just contain
-    a list of chars we haven't recruited yet.  Not totally sure, though.
+    So I suspect this is intended to be a list of things that are "ready" ("ReDe")
+    to go, or "on deck" to be acquired, or something.  Its first use in the file
+    is a ReDe chunk which seems to contain a list of characters you haven't
+    recruited yet (so they'd be ready to recruit).  Then a bit later on, there's
+    a structure detailing some loot groups.  For instance, from some debug output
+    there:
+
+         - Inner Group 3:
+            - LTde: deck_utility_and_rare
+            - ReDe:
+               0. combat_utility
+               1. combat_utility
+               2. combat_utility
+               3. combat_rare
+         - Inner Group 4:
+            - LTde: deck_resources
+            - ReDe:
+               0. combat_money
+               1. combat_money
+               2. combat_fragments
+               3. combat_money
+               4. combat_fragments
+               5. combat_money
+               6. combat_money
+
+    So yeah, not really sure.
     """
 
     def __init__(self, df):
@@ -562,13 +585,14 @@ class ReDe(Chunk):
         # identifiers, actually)
         self.zero = self.df.read_uint8()
 
-        self.chars = []
-        num_chars = self.df.read_varint()
-        for _ in range(num_chars):
-            self.chars.append(self.df.read_string())
+        # Variable naming is pretty vague here, sorry.
+        self.things = []
+        num_things = self.df.read_varint()
+        for _ in range(num_things):
+            self.things.append(self.df.read_string())
 
         # On my saves, ranges from 0-4.  Bigger values in general when
-        # there are more ready chars in the list, though that's not
+        # there are more things in the list, though that's not
         # entirely predictive.
         self.unknown = self.df.read_uint32()
 
@@ -576,10 +600,86 @@ class ReDe(Chunk):
     def _write_to(self, odf):
 
         odf.write_uint8(self.zero)
-        odf.write_varint(len(self.chars))
-        for char in self.chars:
-            odf.write_string(char)
+        odf.write_varint(len(self.things))
+        for thing in self.things:
+            odf.write_string(thing)
         odf.write_uint32(self.unknown)
+
+
+class LTde(Chunk):
+    """
+    `LTde` chunk.
+    "LT" presumably refers to "loot," "de" might be "default"?
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'LTde')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        # This seems to just be a string?
+        self.default = self.df.read_string()
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_string(self.default)
+
+
+class LTma(Chunk):
+    """
+    `LTma` chunk.
+    "LT" presumably refers to "loot," not sure what "ma" refers to though
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'LTma')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        # Variable names in here are pretty vague, sorry.  This structure
+        # probably isn't the best, but it'll do for now until I figure out
+        # what in the world this is actually used for.  (Assuming that ever
+        # happens; I suspect I probably don't care about the data in here.)
+        self.things = []
+        num_things = self.df.read_varint()
+        for _ in range(num_things):
+            loot_group = self.df.read_string()
+            num_ltde = self.df.read_varint()
+            items = []
+            for _ in range(num_ltde):
+                ltde = LTde(self.df)
+                rede = ReDe(self.df)
+                items.append((ltde, rede))
+            self.things.append((loot_group, items))
+
+        # report, to see if I can figure out what these things are doing.
+        #for idx, (loot_group, items) in enumerate(self.things):
+        #    print(f'Loot Group {idx}: {loot_group}')
+        #    for inner_idx, (ltde, rede) in enumerate(items):
+        #        print(f' - Inner Group {inner_idx}:')
+        #        print(f'    - LTde: {ltde.default}')
+        #        print(f'    - ReDe:')
+        #        for rede_idx, bloop in enumerate(rede.things):
+        #            print(f'       {rede_idx}. {bloop}')
+        #    print('')
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_varint(len(self.things))
+        for loot_group, items in self.things:
+            odf.write_string(loot_group)
+            odf.write_varint(len(items))
+            for ltde, rede in items:
+                ltde.write_to(odf)
+                rede.write_to(odf)
 
 
 class Savefile(Datafile):
@@ -664,6 +764,9 @@ class Savefile(Datafile):
                 raise RuntimeError('Unknown ReDe chunk prefix: {rede_zero}')
             self.rede = ReDe(self)
 
+        # LTma
+        self.ltma = LTma(self)
+
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
         self.remaining = self.read()
@@ -725,6 +828,9 @@ class Savefile(Datafile):
             odf.write_uint8(1)
             odf.write_uint8(0)
             self.rede.write_to(odf)
+
+        # LTma
+        self.ltma.write_to(odf)
 
         # Any remaining data at the end that we're not sure of
         #odf.write(self.remaining)
