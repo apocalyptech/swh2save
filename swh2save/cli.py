@@ -136,12 +136,11 @@ class FlexiListAction(argparse.Action):
     it'll trim down the list to just a single option (will use `list`,
     regardless of whether `list` or `help` was specified).
 
-    Given what we're using this for, there's actually *relatively*
-    little reason not to use a set rather than a list.  The one reason
-    I'm not is that when adding inventory items, they'll show up in
-    the in-game inventory in the order they're added (well, the reverse
-    of the order added, anyway), and I'd like the user-specified
-    item adding to reflect that.  So, a list it is.
+    This is mostly just used in cases where we want to preserve insertion
+    order, or when you might want to include the same entry more than once.
+    These are things that a user might want for inventory edits.  For cases
+    where you only want a set of unique items, you can use FlexiSetAction
+    instead.
     """
 
     def __call__(self, parser, namespace, this_value, option_string):
@@ -167,6 +166,42 @@ class FlexiListAction(argparse.Action):
             arg_value = ['list']
         else:
             arg_value.extend(values)
+
+        # Set our value and continue on!
+        setattr(namespace, self.dest, arg_value)
+
+
+class FlexiSetAction(argparse.Action):
+    """
+    The equivalent of my FlexiListAction, except it stores data in a
+    set instead of a list.  As such, no ordering is preserved.  As with
+    FlexiSetAction, if `list` or `help` is specified at any point, the
+    only item left in the set after processing will be `list`.
+    """
+
+    def __call__(self, parser, namespace, this_value, option_string):
+
+        # Force the attribute to a set, if it isn't already
+        arg_value = getattr(namespace, self.dest)
+        if not isinstance(arg_value, set):
+            arg_value = set()
+
+        # Check for `list`
+        if 'list' in arg_value:
+            return
+
+        # Split the given arg, if necessary
+        if ',' in this_value:
+            values = set([v.strip() for v in this_value.split(',')])
+        else:
+            values = {this_value.strip()}
+
+        # Check to see if `list` or `help` was specified.  If so,
+        # trim it down, otherwise add the new values.
+        if 'list' in values or 'help' in values:
+            arg_value = {'list'}
+        else:
+            arg_value |= values
 
         # Set our value and continue on!
         setattr(namespace, self.dest, arg_value)
@@ -203,7 +238,7 @@ def main():
 
     parser.add_argument('-v', '--verbose',
             action='store_true',
-            help='Show extra information when listing savegame contents',
+            help='Show extra information when listing savegame contents and performing edits',
             )
 
     parser.add_argument('-d', '--debug',
@@ -239,11 +274,22 @@ def main():
             )
 
     parser.add_argument('--add-upgrade',
-            action=FlexiListAction,
+            action=FlexiSetAction,
             help="""
                 Unlock specific upgrades.  This will also unlock Key Items as
                 necessary.  Can be specified more than once, and/or separate upgrade names
                 with commas.  Specify `list` or `help` to get a list of valid upgrades.
+                """,
+            )
+
+    parser.add_argument('--remove-upgrade',
+            action=FlexiSetAction,
+            help="""
+                Removes specific upgrades.  Will also remove the matching Key Items if
+                needed.  Note that the `atomic_engine` key item provides both the `dive_02`
+                and `geiger_counter_01` upgrades.  Removing either of those upgrades will
+                trigger the removal of the `atomic_engine` key item, which will then remove
+                the other of the upgrade pair.  Removals are processed after all additions.
                 """,
             )
 
@@ -290,12 +336,22 @@ def main():
             )
 
     parser.add_argument('--add-key-item',
-            action=FlexiListAction,
+            action=FlexiSetAction,
             help="""
                 Unlock specific Key Items.  These are often tied to ship upgrades, and
-                the game should automatically apply the ship upgrade if the key item is in
-                your inventory.  Can be specified more than once, and/or separate item names
-                with commas.  Specify `list` or `help` to get a list of valid Key Items.
+                this option will unlock matching upgrades if necessary.  Can be specified
+                more than once, and/or separate item names with commas.  Specify `list` or
+                `help` to get a list of valid Key Items.
+                """,
+            )
+
+    parser.add_argument('--remove-key-item',
+            action=FlexiSetAction,
+            help="""
+                Removes specific Key Items.  Will also remove the matching sub upgrades if
+                needed.  Note that the `atomic_engine` key item provides both the `dive_02`
+                and `geiger_counter_01` upgrades, so removing the Atomic Engine will remove
+                both of those upgrades.  Removals are processed after all additions.
                 """,
             )
 
@@ -312,9 +368,9 @@ def main():
             action='store_true',
             help="""
                 Unlocks the upgrades and key items necessary to give the sub its full suite
-                of abilities (boosting, diving, ram, shield, and atomic engine).  This also
+                of abilities (boosting, diving, ram, shield, sonar, and atomic engine).  This also
                 ends up unlocking a geiger counter level as a side effect.  This is equivalent
-                to using the arguments `--add-upgrade ship_boost_00,dive_00,dive_02,geiger_counter_01
+                to using the arguments `--add-upgrade ship_boost_00,dive_00,dive_02,geiger_counter_01,sonar
                 --add-key-item keyitem_ship_ram,keyitem_ship_shield`
                 """,
             )
@@ -329,7 +385,7 @@ def main():
             )
 
     parser.add_argument('--add-hat',
-            action=FlexiListAction,
+            action=FlexiSetAction,
             help="""
                 Unlock specific hats.  Can be specified more than once, and/or
                 separate hat names with commas.  Specify `list` or `help` to
@@ -400,19 +456,91 @@ def main():
             )
 
     args = parser.parse_args()
+
+    ###
+    ### Some basic argument cleanup
+    ###
+
+    # Just a single filename
     args.filename = args.filename[0]
 
-    # Process some meta-commands for unlocks
+    # Normalize the columns arg for print_columns
+    if args.single_column:
+        columns = 1
+    else:
+        columns = None
+
+    # --engame-pack is a conglomerate
+    if args.endgame_pack:
+        args.endgame_ship_pack = True
+        args.endgame_weapon_pack = True
+        args.endgame_utility_pack = True
+
+    ###
+    ### Process additions of key items and unlocks.  There are quite a few
+    ### args which end up touching the same vars.  We're going to collapse
+    ### all of them down into `add_key_item` and `add_upgrade`, as sets.
+    ###
+    ### All of this upgrade / key item processing is severely overengineered.
+    ### Ah well!
+    ###
+
+    # Remember what the user actually asked for.
+    user_add_key_item = False
+    user_add_upgrade = False
+    user_remove_key_item = False
+    user_remove_upgrade = False
+
+    # Ensure that our args start out as a set
+    if args.add_key_item is None:
+        args.add_key_item = set()
+    else:
+        user_add_key_item = True
+    if args.add_upgrade is None:
+        args.add_upgrade = set()
+    else:
+        user_add_upgrade = True
+
+    # Process global/full unlocks for key items
+    if args.unlock_key_items:
+        args.add_key_item |= set(KEY_ITEMS.keys())
+        user_add_key_item = True
+
+    # Process global/full unlocks for upgrades, and also
+    # some predefined subsets
+    if args.unlock_upgrades:
+        args.add_upgrade |= set(UPGRADES.keys())
+        user_add_upgrade = True
+    else:
+        for upgrade in UPGRADES.values():
+            match upgrade.category:
+                case 'main':
+                    if args.unlock_main_upgrades:
+                        args.add_upgrade.add(upgrade.name)
+                        user_add_upgrade = True
+                case 'ability':
+                    if args.unlock_item_upgrades:
+                        args.add_upgrade.add(upgrade.name)
+                        user_add_upgrade = True
+                case 'guildhall':
+                    if args.unlock_job_upgrades:
+                        args.add_upgrade.add(upgrade.name)
+                        user_add_upgrade = True
+                case _:
+                    raise RuntimeError('Unknown upgrade category for {upgrade.name}: {upgrade.category}')
+            # Unlocking gears, too...
+            if args.unlock_gears and upgrade.name.startswith('celestial_gear_'):
+                args.add_upgrade.add(upgrade.name)
+                user_add_upgrade = True
+
+    # Unlocking sub abilities
     if args.unlock_sub_abilities:
-        if args.add_upgrade is None:
-            args.add_upgrade = []
-        upgrade_set = set(args.add_upgrade)
-        if args.add_key_item is None:
-            args.add_key_item = []
-        keyitem_set = set(args.add_key_item)
+        user_add_upgrade = True
+        user_add_key_item = True
         for upgrade in [
                 'ship_boost_00',
                 'dive_00',
+                'sonar',
                 # We want dive_02, which is provided by the atomic_engine keyitem.  That
                 # same keyitem also provides geiger_counter_01, which IMO we don't really
                 # care about, but since we'll get it anyway from the engine, may as well
@@ -420,8 +548,8 @@ def main():
                 'dive_02',
                 'geiger_counter_01',
                 ]:
-            if upgrade not in upgrade_set:
-                args.add_upgrade.append(upgrade)
+            if upgrade not in args.add_upgrade:
+                args.add_upgrade.add(upgrade)
         # The above upgrades will add in the required keyitems, but there are a couple
         # key items which aren't associated with entries in the upgrade list.  So we're
         # adding those 'by hand,' so to speak.
@@ -429,27 +557,24 @@ def main():
                 'keyitem_ship_ram',
                 'keyitem_ship_shield',
                 ]:
-            if keyitem not in keyitem_set:
-                args.add_key_item.append(keyitem)
+            if keyitem not in args.add_key_item:
+                args.add_key_item.add(keyitem)
 
-    # More meta-commands
-    if args.unlock_gears:
-        if args.add_upgrade is None:
-            args.add_upgrade = []
-        upgrade_set = set(args.add_upgrade)
-        for upgrade_name in UPGRADES.keys():
-            if upgrade_name.startswith('celestial_gear_') and upgrade_name not in upgrade_set:
-                args.add_upgrade.append(upgrade_name)
+    ###
+    ### Now we've got args.add_key_item and args.add_upgrade populated based
+    ### on user args.  First up, make sure that each of them is valid (this also
+    ### checks a few things other than just key items and upgrades).
+    ###
 
-    # If we need to do some info dumps, do them now before we even try loading
-    # a file.
     did_info_dump = False
     for section, lookup, arg_var in [
             ('Weapons', WEAPONS, 'add_weapon'),
             ('Utilities', UTILITIES, 'add_utility'),
             ('Ship Equipment', SHIP_EQUIPMENT, 'add_ship_equipment'),
             ('Key Items', KEY_ITEMS, 'add_key_item'),
+            ('Key Items', KEY_ITEMS, 'remove_key_item'),
             ('Upgrades', UPGRADES, 'add_upgrade'),
+            ('Upgrades', UPGRADES, 'remove_upgrade'),
             ('Hats', HATS, 'add_hat'),
             ]:
         show_possibilities = False
@@ -484,17 +609,64 @@ def main():
     if did_info_dump:
         return
 
-    # Normalize the columns arg for print_columns
-    if args.single_column:
-        columns = 1
-    else:
-        columns = None
+    ###
+    ### Okay, we've got valid args.add_key_item and args.add_upgrade sets.
+    ### The next thing to do is process their relative dependencies and add
+    ### to the other sets if need be.
+    ###
 
-    # --engame-pack is a conglomerate
-    if args.endgame_pack:
-        args.endgame_ship_pack = True
-        args.endgame_weapon_pack = True
-        args.endgame_utility_pack = True
+    for upgrade_name in args.add_upgrade:
+        upgrade = UPGRADES[upgrade_name]
+        if upgrade.keyitem is not None:
+            args.add_key_item.add(upgrade.keyitem)
+    for key_item_name in args.add_key_item:
+        key_item = KEY_ITEMS[key_item_name]
+        for upgrade_name in key_item.upgrades:
+            args.add_upgrade.add(upgrade_name)
+
+    ###
+    ### Okay, now do some pre-processing for our keyitem/upgrade removal args.
+    ### No point in adding them in if they're just going to get removed later.
+    ### Note that even after "filtering out" removals from our addition sets,
+    ### we do still need to test later on to see if they need to be removed
+    ### from the savegame in general.
+    ###
+
+    if args.remove_key_item is None:
+        args.remove_key_item = set()
+    else:
+        user_remove_key_item = True
+    if args.remove_upgrade is None:
+        args.remove_upgrade = set()
+    else:
+        user_remove_upgrade = True
+
+    # Removing upgrade `dive_02` or `geiger_counter_01` would trigger the
+    # removal of the `atomic_engine` key item, which would then trigger the
+    # removal of the other upgrade, even if it hadn't been explicitly
+    # specified.  Given how the data is structured now, we should be okay
+    # if we process upgrades first and then key items, so we won't bother to
+    # process upgrades more than once.
+    for upgrade_name in args.remove_upgrade:
+        if upgrade_name in args.add_upgrade:
+            args.add_upgrade.remove(upgrade_name)
+        upgrade = UPGRADES[upgrade_name]
+        if upgrade.keyitem is not None:
+            if upgrade.keyitem in args.add_key_item:
+                args.add_key_item.remove(upgrade.keyitem)
+            args.remove_key_item.add(upgrade.keyitem)
+    for key_item_name in args.remove_key_item:
+        if key_item_name in args.add_key_item:
+            args.add_key_item.remove(key_item_name)
+        key_item = KEY_ITEMS[key_item_name]
+        for upgrade_name in key_item.upgrades:
+            if upgrade_name in args.add_upgrade:
+                args.add_upgrade.remove(upgrade_name)
+            args.remove_upgrade.add(upgrade_name)
+
+    ###
+    ### Okay, back to less involved processing
+    ###
 
     # Load in the savefile
     save = Savefile(args.filename)
@@ -654,70 +826,87 @@ def main():
                 save.resources.fragments = args.fragments
                 do_save = True
 
-        # Upgrades
-        added_key_items_from_upgrades = False
-        if args.unlock_upgrades or args.add_upgrade \
-                or args.unlock_main_upgrades \
-                or args.unlock_item_upgrades \
-                or args.unlock_job_upgrades:
-            if args.unlock_upgrades:
-                requested_upgrades = set(UPGRADES.keys())
-            else:
-                requested_upgrades = set()
-                if args.add_upgrade:
-                    requested_upgrades |= set(args.add_upgrade)
-                for upgrade in UPGRADES.values():
-                    match upgrade.category:
-                        case 'main':
-                            if args.unlock_main_upgrades:
-                                requested_upgrades.add(upgrade.name)
-                        case 'ability':
-                            if args.unlock_item_upgrades:
-                                requested_upgrades.add(upgrade.name)
-                        case 'guildhall':
-                            if args.unlock_job_upgrades:
-                                requested_upgrades.add(upgrade.name)
-                        case _:
-                            raise RuntimeError('Unknown upgrade category for {upgrade.name}: {upgrade.category}')
-            needed_upgrades = requested_upgrades - set(save.ship.upgrades)
+        # New upgrades.  Note that all our keyitem mappings have already been computed
+        if args.add_upgrade:
+            needed_upgrades = args.add_upgrade - set(save.ship.upgrades)
             if len(needed_upgrades) == 0:
-                print(f'- Skipping upgrade unlocks; all requested upgrades are already unlocked')
+                if user_add_upgrade:
+                    print('- Skipping upgrade unlocks; all requested upgrades are already unlocked')
             else:
                 print(f'- Unlocking {len(needed_upgrades)} upgrades')
+                if args.verbose:
+                    print_columns(
+                            needed_upgrades,
+                            columns=columns,
+                            lookup=UPGRADES,
+                            lookup_sort=True,
+                            )
                 save.ship.upgrades.extend(sorted(needed_upgrades))
-                required_keyitems = set()
-                for upgrade_str in needed_upgrades:
-                    upgrade = UPGRADES[upgrade_str]
-                    if upgrade.keyitem is not None:
-                        required_keyitems.add(upgrade.keyitem)
-                # Theoretically we shouldn't have to bother with checking to see if
-                # we have these keyitems; if we *had* the item we'd've probably already
-                # had the upgrade.  But still, let's check anyway.
-                needed_keyitems = required_keyitems - set([i.name for i in save.inventory.items])
-                if len(needed_keyitems) > 0:
-                    added_key_items_from_upgrades = True
-                    print(f' - Also unlocking {len(needed_keyitems)} needed Key Items')
-                    for item in sorted(needed_keyitems):
-                        save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
+                do_save = True
+        elif user_add_upgrade:
+            print('- Skipping upgrade unlocks due to other removals requested')
+
+        # Removed upgrades
+        if args.remove_upgrade:
+            declined_upgrades = args.remove_upgrade & set(save.ship.upgrades)
+            if len(declined_upgrades) == 0:
+                if user_remove_upgrade:
+                    print('- Skipping upgrade removals; all requested removals are already not present')
+            else:
+                print(f'- Removing {len(declined_upgrades)} upgrades')
+                if args.verbose:
+                    print_columns(
+                            declined_upgrades,
+                            columns=columns,
+                            lookup=UPGRADES,
+                            lookup_sort=True,
+                            )
+                for upgrade_name in declined_upgrades:
+                    save.ship.upgrades.remove(upgrade_name)
                 do_save = True
 
-        # Key Items
-        if args.unlock_key_items or args.add_key_item:
-            if args.unlock_key_items:
-                requested_items = KEY_ITEMS.keys()
-            else:
-                requested_items = args.add_key_item
-            needed_keyitems = set(requested_items) - set([i.name for i in save.inventory.items])
+        # New Key Items.  Note that all our upgrade mappings have already been computed
+        if args.add_key_item:
+            needed_keyitems = args.add_key_item - set([i.name for i in save.inventory.items])
             if len(needed_keyitems) == 0:
-                print(f'- Skipping key unlocks; all requested Key Items are already unlocked')
+                if user_add_key_item:
+                    print('- Skipping Key Item unlocks; all requested Key Items are already unlocked')
             else:
-                if added_key_items_from_upgrades:
-                    extra = ' more'
-                else:
-                    extra = ''
-                print(f'- Unlocking {len(needed_keyitems)}{extra} Key Items')
+                print(f'- Unlocking {len(needed_keyitems)} Key Items')
+                if args.verbose:
+                    print_columns(
+                            needed_keyitems,
+                            columns=columns,
+                            lookup=KEY_ITEMS,
+                            lookup_sort=True,
+                            )
                 for item in sorted(needed_keyitems):
                     save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
+                do_save = True
+        elif user_add_key_item:
+            print('- Skipping Key Item unlocks due to other removals requested')
+
+        # Removed Key Items
+        if args.remove_key_item:
+            declined_items = args.remove_key_item & set([i.name for i in save.inventory.items])
+            if len(declined_items) == 0:
+                if user_remove_key_item:
+                    print('- Skipping Key Item removals; all requested removals are already not present')
+            else:
+                print(f'- Removing {len(declined_items)} Key Items')
+                if args.verbose:
+                    print_columns(
+                            declined_items,
+                            columns=columns,
+                            lookup=KEY_ITEMS,
+                            lookup_sort=True,
+                            )
+                to_remove_indexes = []
+                for idx, item in enumerate(save.inventory.items):
+                    if item.name in declined_items:
+                        to_remove_indexes.append(idx)
+                for idx in sorted(to_remove_indexes, reverse=True):
+                    del save.inventory.items[idx]
                 do_save = True
 
         # Hats!

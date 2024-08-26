@@ -97,16 +97,22 @@ def main():
                 pass
 
 
-            class KeyItem(GameData):
-                pass
-
-
             class Upgrade(GameData):
 
                 def __init__(self, name, label, keyitem, category):
                     super().__init__(name, label)
                     self.keyitem = keyitem
                     self.category = category
+
+
+            class KeyItem(GameData):
+
+                def __init__(self, name, label, upgrades=None):
+                    super().__init__(name, label)
+                    if upgrades is None:
+                        self.upgrades = []
+                    else:
+                        self.upgrades = upgrades
 
 
             class Hat(GameData):
@@ -170,10 +176,24 @@ def main():
                 print('', file=odf)
 
 
-            # Get a list of keyitems.  Needed also for proper upgrade handling
+            # Some keyitems and upgrades a pretty closely related, and I'd like to be able
+            # to enable/disable them together.  So key items need to know what upgrade(s)
+            # they unlock, and upgrades need to know what key items are required.  In some
+            # cases it hardly matters; if you add the key item to the save, the game will
+            # automatically unlock the upgrade, for instance.  But adding an *upgrade*
+            # should really add the relevant key items, and removing either should really
+            # remove their counterparts.  Also, for key-item-unlocked upgrades, the item
+            # name seems to be the only decent way to get an english string for the upgrade
+            # name, so we're pulling it from there.
+            #
+            # So anyway, we need to read key items first so we can get the key item names
+            # (to put that info in the upgrades structure), but we also need to read the
+            # upgrades first to find out which key items they require.  Fun!  So we'll
+            # be sort of doing a double-loop for one of them.  The simplest one to do first
+            # is KeyItems, so we'll be doing *that* to get the names, then looping through
+            # ugprades, and then looping through key items yet again.
             keyitems = {}
             with game_pak.open('Definitions/key_items.xml') as keyitem_xml:
-
                 print('KEY_ITEMS = {', file=odf)
                 root = ET.fromstring(keyitem_xml.read())
                 for child in root:
@@ -185,15 +205,12 @@ def main():
                             loc_name = inner_child.text
                             break
                     keyitems[child.attrib['Name']] = labels[loc_name]
-                    print("        '{}': KeyItem(".format(child.attrib['Name']), file=odf)
-                    print("            '{}',".format(child.attrib['Name']), file=odf)
-                    print("            \"{}\",".format(quote_string(labels[loc_name])), file=odf)
-                    print("            ),", file=odf)
                 print('        }', file=odf)
                 print('', file=odf)
 
 
             # Now a list of ship upgrades
+            key_item_to_upgrade = {}
             with game_pak.open('Definitions/ship_upgrades.xml') as ship_upgrades:
 
                 print('UPGRADES = {', file=odf)
@@ -215,6 +232,10 @@ def main():
                         match inner_child.tag:
                             case 'KeyItem':
                                 keyitem = inner_child.text
+                                # Keep track of the keyitem->upgrade mapping
+                                if keyitem not in key_item_to_upgrade:
+                                    key_item_to_upgrade[keyitem] = []
+                                key_item_to_upgrade[keyitem].append(child.attrib['Name'])
                             case 'ShowOptionalLayer':
                                 optional_layer = inner_child.text
                             case 'Type':
@@ -282,6 +303,22 @@ def main():
                     print("            ),", file=odf)
                 print('        }', file=odf)
                 print('', file=odf)
+
+
+            # Now back to key items
+            print('KEY_ITEMS = {', file=odf)
+            for keyitem_name, keyitem_label in keyitems.items():
+                print("        '{}': KeyItem(".format(keyitem_name), file=odf)
+                print("            '{}',".format(keyitem_name), file=odf)
+                print("            \"{}\",".format(quote_string(keyitem_label)), file=odf)
+                if keyitem_name in key_item_to_upgrade:
+                    print("            [{}],".format(
+                        ', '.join(["'{}'".format(n) for n in key_item_to_upgrade[keyitem_name]]),
+                        ), file=odf)
+                print("            ),", file=odf)
+            print('        }', file=odf)
+            print('', file=odf)
+
 
             # Now a few datatypes that we're handling similarly.
             for xml_filename, var_name, class_name, label_prefix, known_skips in [
