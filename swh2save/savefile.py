@@ -776,6 +776,37 @@ class LootDeckStatus(Chunk):
         odf.write_uint32(self.unknown_one)
 
 
+class ShipLocation(Chunk):
+    """
+    `ShlD` chunk.  Pretty sure this is ship location.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'ShlD')
+
+        # Hm, I wonder if this is a flag of some sort?  Doesn't start with
+        # the usual 0x00 which the first byte of so many other chunks seem to
+        # be.
+        self.flag = self.df.read_uint8()
+
+        self.location = self.df.read_string()
+        self.region = self.df.read_string()
+
+        # Values seen in my saves: 0, 7, 9
+        self.unknown_1 = self.df.read_uint32()
+        # Values seen in my saves: 0, 1
+        self.unknown_2 = self.df.read_uint8()
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.flag)
+        odf.write_string(self.location)
+        odf.write_string(self.region)
+        odf.write_uint32(self.unknown_1)
+        odf.write_uint8(self.unknown_2)
+
+
 class Savefile(Datafile):
 
     # Maximum savefile version that we can parse
@@ -864,6 +895,9 @@ class Savefile(Datafile):
         # Loot Deck status
         self.lode = LootDeckStatus(self)
 
+        # Ship Location
+        self.ship_location = ShipLocation(self)
+
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
         self.remaining = self.read()
@@ -931,6 +965,9 @@ class Savefile(Datafile):
 
         # Loot Deck status
         self.lode.write_to(odf)
+
+        # Ship Location
+        self.ship_location.write_to(odf)
 
         # Any remaining data at the end that we're not sure of
         #odf.write(self.remaining)
