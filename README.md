@@ -4,7 +4,9 @@ DISCLAIMER
 This is in an alpha state; very much still in development.  It's starting to
 get some decent functionality, and it's been awhile since I've generated
 a corrupt savefile, but definitely don't think this is a finished product!
-Back up your saves and use with caution!
+Back up your saves and use with caution!  One known deficiency: it *cannot*
+deal with mid-mission savegames.  At the moment, only feed it saves from
+outside missions.
 
 SteamWorld Heist II CLI Save Editor
 ===================================
@@ -48,6 +50,11 @@ of resulting in corrupted savegames.  I believe the risk is extremely small,
 but keep it in mind!  Even if previous similar edits have worked fine, it's
 possible that this could encounter an edge case which results in an invalid
 save file.  Keep backups of your saves, and use with caution!
+
+Note too that one known deficiency of the utility is that it currently *cannot*
+cope with mid-mission savegames.  I believe it'll probably fail before it's even
+had a chance to read those in, but definitely don't use the utility on mid-mission
+savegames; they are likely to end up corrupted even if the process finishes.
 
 Format Info
 ===========

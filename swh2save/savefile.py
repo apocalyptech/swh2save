@@ -807,6 +807,314 @@ class ShipLocation(Chunk):
         odf.write_uint8(self.unknown_2)
 
 
+class RevealedMapData(Chunk):
+    """
+    `MtBG` chunk.  This holds info about the revealed map; a bit value of
+    1 means that a cloud is present, and 0 means that it's been revealed.
+    """
+
+    # This is hardcoded here, but possibly it's technically reliant on
+    # the size stored in the chunk.
+    MAP_DATA_SIZE = 10440
+
+    def __init__(self, df):
+        super().__init__(df, 'MtBG')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        # maybe a flag of some sort?  Value of 1 seems common
+        self.unknown_1 = self.df.read_uint8()
+
+        # Pretty sure these are the size of the area; in my saves
+        # it's always 270 and then 290
+        self.size_x = self.df.read_uint32()
+        self.size_y = self.df.read_uint32()
+
+        # Revealed map data -- one bit per "pixel" of the map, in general.
+        # 10440/290 is 36, fwiw, and 36 bytes is enough to store 270 bit
+        # values (can get 288).  So I think that not all of this data is
+        # actually used, but it's pretty close
+        self.data = self.df.read(RevealedMapData.MAP_DATA_SIZE)
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_uint8(self.unknown_1)
+        odf.write_uint32(self.size_x)
+        odf.write_uint32(self.size_y)
+        odf.write(self.data)
+
+
+    def reveal(self):
+        self.data = b'\x00'*RevealedMapData.MAP_DATA_SIZE
+
+
+    def hide(self):
+        self.data = b'\xFF'*RevealedMapData.MAP_DATA_SIZE
+
+
+class PWDT(Chunk):
+    """
+    `PWDT` chunk.  Not exactly sure what this is meant to store, though
+    the main thing seems to be storing the various revealed-map chunks.
+    Could the "WD" mean "World Discovery?"  Seems like a stretch, esp.
+    since I have no idea what the P or T would mean.  :)
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'PWDT')
+
+        # Seems to always be one?
+        self.unknown_one = self.df.read_uint8()
+
+        # Revealed map data
+        self.revealed_map_data = []
+        num_revealed_map_data = self.df.read_varint()
+        for _ in range(num_revealed_map_data):
+            self.revealed_map_data.append(RevealedMapData(self.df))
+
+        # Then some more data; maybe a series of varints?
+        self.unknown_varints = []
+        num_unknown_varints = self.df.read_varint()
+        for _ in range(num_unknown_varints):
+            self.unknown_varints.append(self.df.read_varint())
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.unknown_one)
+        odf.write_varint(len(self.revealed_map_data))
+        for data in self.revealed_map_data:
+            data.write_to(odf)
+        odf.write_varint(len(self.unknown_varints))
+        for varint in self.unknown_varints:
+            odf.write_varint(varint)
+
+
+class MissionData(Chunk):
+    """
+    `MsnD` chunk.  Pretty sure this is mission data.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'MsnD')
+
+        # Hm, I wonder if this is a flag of some sort?  Doesn't start with
+        # the usual 0x00 which the first byte of so many other chunks seem to
+        # be.
+        self.flag = self.df.read_uint8()
+
+        self.location = self.df.read_string()
+        self.another_location = self.df.read_string()
+
+        self.unknown_1 = self.df.read_uint8()
+        self.unknown_2 = self.df.read_uint8()
+        # The data here seems like it would always fit in a u16; perhaps we're being
+        # too greedy with the 32...
+        self.unknown_3 = self.df.read_uint32()
+        self.unknown_4 = self.df.read_uint8()
+
+        # Just kind of guessing that it's "active."  It's a list of crew, at least.
+        self.active_crew = []
+        num_active_crew = self.df.read_varint()
+        for _ in range(num_active_crew):
+            self.active_crew.append(self.df.read_string())
+
+        # These always seem to be zero
+        self.unknown_5 = self.df.read_uint8()
+        self.unknown_6 = self.df.read_uint8()
+
+        # Sixteen bytes of unknown data, but for all my collected saves, it's
+        # literally the same value in each one: a sequence of eight bytes which
+        # are then repeated once more for good measure.  Just reading these in
+        # as u32s for now.  TODO: should maybe check for 1==3 and 2==4, and alert
+        # if that's not the case, so we could maybe investigate.
+        #
+        # The byte sequence that I see on my saves:
+        #
+        #    B5 3B 12 1F  E5 55 9A 15  B5 3B 12 1F  E5 55 9A 15
+        self.unknown_same_1 = self.df.read_uint32()
+        self.unknown_same_2 = self.df.read_uint32()
+        self.unknown_same_3 = self.df.read_uint32()
+        self.unknown_same_4 = self.df.read_uint32()
+
+        # Then a further five bytes which, in my saves, are all zero.  Go team?
+        self.unknown_zeroes_1 = self.df.read_uint8()
+        self.unknown_zeroes_2 = self.df.read_uint8()
+        self.unknown_zeroes_3 = self.df.read_uint8()
+        self.unknown_zeroes_4 = self.df.read_uint8()
+        self.unknown_zeroes_5 = self.df.read_uint8()
+
+        # And then a varint of some sort -- my one save where this is anything
+        # but zero is right after the sub kraken fight, at the end.
+        self.unknown_7 = self.df.read_varint()
+
+        # Difficulty.  Different from the "main" difficulty, I guess?
+        self.difficulty = Difficulty(self.df)
+
+        # Some more unknown stuff
+        self.unknown_zeroes_6 = self.df.read_uint8()
+
+        # Not sure if this is a list, or just a flag saying that there's another
+        # varint here.  Treating it as a list for now, I guess?
+        self.unknown_eight_bytes = []
+        num_unknown_eight_bytes = self.df.read_varint()
+        for _ in range(num_unknown_eight_bytes):
+            # No clue what these might mean, or how they should be interpreted.
+            # There's no string references, at least.  Reading as two uint32s
+            # for now.
+            self.unknown_eight_bytes.append((
+                self.df.read_uint32(),
+                self.df.read_uint32(),
+                ))
+
+        # Some more unknown stuff
+        self.unknown_zeroes_7 = self.df.read_uint8()
+        self.unknown_zeroes_8 = self.df.read_uint8()
+        self.unknown_zeroes_9 = self.df.read_uint8()
+
+        # Another thing where I don't know if it's a flag or a list.  Treating
+        # as a list for now.
+        self.unknown_strings = []
+        num_unknown_strings = self.df.read_varint()
+        for _ in range(num_unknown_strings):
+            self.unknown_strings.append(self.df.read_string())
+
+        # Debugging...
+        if False:
+            print(' | '.join([str(i) for i in [
+                self.location,
+                self.another_location,
+                self.unknown_1,
+                self.unknown_2,
+                self.unknown_3,
+                self.unknown_4,
+                #','.join(self.active_crew),
+                self.unknown_5,
+                self.unknown_6,
+                self.unknown_7,
+                self.unknown_zeroes_1,
+                self.unknown_zeroes_2,
+                self.unknown_zeroes_3,
+                self.unknown_zeroes_4,
+                self.unknown_zeroes_5,
+                self.unknown_zeroes_6,
+                self.unknown_zeroes_7,
+                self.unknown_zeroes_8,
+                self.unknown_zeroes_9,
+                self.unknown_eight_bytes,
+                ]]))
+
+        # Then a varint of some sort.  This feels like it's *got* to be an
+        # offset of some sort; it very nearly points to a section with the only
+        # LuaW chunk (with some associated PBar chunks, and PeCo), and shortly
+        # thereafter is some Pers chunks (which is where I think XP + skills are).
+        # It's *so close!*  I can't quite figure out exactly how to interpret it,
+        # though.  Also: I feel like there are some edge cases with setting this
+        # up; you'd need to take into account any strings stored in the inner
+        # data, and depending on how that plays out, the byte length could change,
+        # which could theoretically cause this varint to change length, which
+        # would then need to trigger the inner string references to change yet
+        # again, etc...
+        #
+        # Still, it seems quite regular.  On the first 19 of the saves I collected,
+        # if you move backwards three bytes from the start of the varint and then
+        # add this offset, you end up directly at the LuaW chunk.  But then at
+        # the 20th save, you start having to go backwards more than three bytes.
+        # Though the distance stays constant for awhile, before having another
+        # similar jump.  So: weird.
+        #
+        # I'm a bit worried that we'll end up needing to know how to update this
+        # value properly, but time will tell.
+        self.unknown_offset = self.df.read_varint()
+
+        # Some debugging attempts...
+        #cur_pos = self.df.tell()
+        #import os
+        #self.df.seek(self.unknown_offset-6, os.SEEK_CUR)
+        #new_pos = self.df.tell()
+        #data = self.df.read(4)
+        #self.df.seek(cur_pos)
+        #print('0x{:X} + 0x{:X} -> 0x{:X}: {}'.format(
+        #    cur_pos,
+        #    self.unknown_offset,
+        #    new_pos,
+        #    data,
+        #    ))
+
+        # Well, regardless of how exactly to interpret that offset, it seems that
+        # if it's 0 we skip a bunch of processing, but otherwise we have some
+        # more chunks to read in.
+        if self.unknown_offset > 0:
+            self.pwdt = PWDT(self.df)
+
+            # No clue what's up with these; there are some patterns to be seen,
+            # but they remain pretty opaque.  Does seem to be twelve bytes quite
+            # consistently, though
+            self.unknown_end_bytes = []
+            for _ in range(12):
+                self.unknown_end_bytes.append(self.df.read_uint8())
+        else:
+            self.pwdt = None
+            self.unknown_end_bytes = None
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.flag)
+        odf.write_string(self.location)
+        odf.write_string(self.another_location)
+
+        odf.write_uint8(self.unknown_1)
+        odf.write_uint8(self.unknown_2)
+        odf.write_uint32(self.unknown_3)
+        odf.write_uint8(self.unknown_4)
+
+        odf.write_varint(len(self.active_crew))
+        for crew in self.active_crew:
+            odf.write_string(crew)
+
+        odf.write_uint8(self.unknown_5)
+        odf.write_uint8(self.unknown_6)
+
+        odf.write_uint32(self.unknown_same_1)
+        odf.write_uint32(self.unknown_same_2)
+        odf.write_uint32(self.unknown_same_3)
+        odf.write_uint32(self.unknown_same_4)
+        odf.write_uint8(self.unknown_zeroes_1)
+        odf.write_uint8(self.unknown_zeroes_2)
+        odf.write_uint8(self.unknown_zeroes_3)
+        odf.write_uint8(self.unknown_zeroes_4)
+        odf.write_uint8(self.unknown_zeroes_5)
+        odf.write_varint(self.unknown_7)
+
+        self.difficulty.write_to(odf)
+
+        odf.write_uint8(self.unknown_zeroes_6)
+        odf.write_varint(len(self.unknown_eight_bytes))
+        for one, two in self.unknown_eight_bytes:
+            odf.write_uint32(one)
+            odf.write_uint32(two)
+
+        odf.write_uint8(self.unknown_zeroes_7)
+        odf.write_uint8(self.unknown_zeroes_8)
+        odf.write_uint8(self.unknown_zeroes_9)
+
+        odf.write_varint(len(self.unknown_strings))
+        for string in self.unknown_strings:
+            odf.write_string(string)
+
+        odf.write_varint(self.unknown_offset)
+
+        if self.unknown_offset > 0:
+            self.pwdt.write_to(odf)
+            for value in self.unknown_end_bytes:
+                odf.write_uint8(value)
+
+
 class Savefile(Datafile):
 
     # Maximum savefile version that we can parse
@@ -898,6 +1206,9 @@ class Savefile(Datafile):
         # Ship Location
         self.ship_location = ShipLocation(self)
 
+        # Mission Data
+        self.missions = MissionData(self)
+
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
         self.remaining = self.read()
@@ -968,6 +1279,9 @@ class Savefile(Datafile):
 
         # Ship Location
         self.ship_location.write_to(odf)
+
+        # Mission Data
+        self.missions.write_to(odf)
 
         # Any remaining data at the end that we're not sure of
         #odf.write(self.remaining)
