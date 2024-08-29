@@ -45,6 +45,34 @@ class Chunk:
         return
 
 
+    def to_json(self):
+        my_dict = {'chunk': self.header}
+        my_dict |= self._to_json()
+        return my_dict
+
+
+    @abc.abstractmethod
+    def _to_json(self):
+        return {}
+
+
+    def _json_simple(self, target_dict, attrs):
+        for attr in attrs:
+            target_dict[attr] = getattr(self, attr)
+
+
+    def _json_object_arr(self, target_dict, attrs):
+        for attr in attrs:
+            target_dict[attr] = []
+            for element in getattr(self, attr):
+                target_dict[attr].append(element.to_json())
+
+
+    def _json_object_single(self, target_dict, attrs):
+        for attr in attrs:
+            target_dict[attr] = getattr(self, attr).to_json()
+
+
 class Difficulty(Chunk):
     """
     `Difc` chunk which holds info about the configured game difficulty
@@ -66,6 +94,15 @@ class Difficulty(Chunk):
             odf.write_uint32(setting)
 
 
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'unknown',
+            'settings',
+            ])
+        return my_dict
+
+
 class Imh2(Chunk):
     """
     `imh2` chunk.  Presumably some mission state stuff...
@@ -80,7 +117,9 @@ class Imh2(Chunk):
 
         self.unknown_1 = df.read_uint32()
         self.unknown_2 = df.read_uint32()
-        self.unknown_3 = df.read_uint32()
+
+        # For Day 1, this will be set to 0, etc...
+        self.days_elapsed = df.read_uint32()
 
         self.small_unknown_1 = df.read_uint8()
         self.small_unknown_2 = df.read_uint8()
@@ -99,7 +138,7 @@ class Imh2(Chunk):
         odf.write_string(self.cur_outset)
         odf.write_uint32(self.unknown_1)
         odf.write_uint32(self.unknown_2)
-        odf.write_uint32(self.unknown_3)
+        odf.write_uint32(self.days_elapsed)
         odf.write_uint8(self.small_unknown_1)
         odf.write_uint8(self.small_unknown_2)
         odf.write_uint8(self.small_unknown_3)
@@ -107,6 +146,25 @@ class Imh2(Chunk):
         odf.write_uint8(self.small_unknown_5)
         odf.write_string(self.cur_campaign_state)
         odf.write_uint8(self.small_unknown_6)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'unknown_start',
+            'cur_outset',
+            'unknown_1',
+            'unknown_2',
+            'days_elapsed',
+            'small_unknown_1',
+            'small_unknown_2',
+            'small_unknown_3',
+            'small_unknown_4',
+            'small_unknown_5',
+            'cur_campaign_state',
+            'small_unknown_6',
+            ])
+        return my_dict
 
 
 class GameResources(Chunk):
@@ -128,6 +186,16 @@ class GameResources(Chunk):
         odf.write_uint8(self.unknown)
         odf.write_uint32(self.fragments)
         odf.write_uint32(self.water)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'unknown',
+            'fragments',
+            'water',
+            ])
+        return my_dict
 
 
 class Ship(Chunk):
@@ -214,6 +282,25 @@ class Ship(Chunk):
         odf.write_uint16(self.unknown_s1)
 
 
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'unknown',
+            'equipped',
+            'item_ids',
+            'item_sequences',
+            'upgrades',
+            'unknown_b1',
+            'unknown_b2',
+            'unknown_b3',
+            'unknown_b4',
+            'unknown_i1',
+            'unknown_i2',
+            'unknown_s1',
+            ])
+        return my_dict
+
+
 class Header(Chunk):
     """
     `Head` chunk; the main save header.
@@ -276,6 +363,30 @@ class Header(Chunk):
         odf.write_uint8(len(self.crew))
         for bot in self.crew:
             odf.write_string(bot)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero_1',
+            'unknown_1',
+            'zero_2',
+            'unknown_2',
+            'unknown_3',
+            'unknown_4',
+            'unknown_5',
+            'unknown_6',
+            ])
+        self._json_object_arr(my_dict, [
+            'difficulties',
+            ])
+        self._json_simple(my_dict, [
+            'cur_location',
+            'cur_region',
+            'cur_quest',
+            'crew',
+            ])
+        return my_dict
 
 
 class InventoryItem(Chunk):
@@ -369,6 +480,19 @@ class InventoryItem(Chunk):
         return InventoryItem(odf)
 
 
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'unknown_1',
+            'id',
+            'flags',
+            'name',
+            'unknown_4',
+            'unknown_5',
+            ])
+        return my_dict
+
+
 class Loadout(Chunk):
     """
     `CrLo` chunk -- Character Loadout, I guess
@@ -438,6 +562,31 @@ class Loadout(Chunk):
             odf.write_varint(value)
 
 
+    def _to_json_item(self, value):
+        if type(value) == InventoryItem:
+            return value.id
+        else:
+            return value
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            'name',
+            ])
+        my_dict['cur_weapon'] = self._to_json_item(self.cur_weapon)
+        my_dict['unknown'] = self.unknown
+        my_dict['utility_1'] = self._to_json_item(self.utility_1)
+        my_dict['utility_2'] = self._to_json_item(self.utility_2)
+        my_dict['utility_3'] = self._to_json_item(self.utility_3)
+        self._json_simple(my_dict, [
+            'cur_hat',
+            'state',
+            ])
+        return my_dict
+
+
 class Inventory(Chunk):
     """
     `Inve` chunk -- Inventory!
@@ -462,14 +611,14 @@ class Inventory(Chunk):
             self.items_by_id[new_item.id] = new_item
             #print(f' - Got item: {self.items[-1]} ({len(self.items)}/{num_items})')
 
-        # No clue what this data is
-        self.unknown_arr = []
-        num_unknown_arr = self.df.read_varint()
-        for _ in range(num_unknown_arr):
-            self.unknown_arr.append(self.df.read_varint())
-            #print(f' - Got unknown: {self.unknown_arr[-1]} ({len(self.unknown_arr)}/{num_unknown_arr})')
+        # A list of "new" items (based on ID)
+        self.new_items = []
+        num_new_items = self.df.read_varint()
+        for _ in range(num_new_items):
+            self.new_items.append(self.df.read_varint())
 
-        # Another unknown varint array
+        # Another unknown varint array.  I thought this might be related to ordering,
+        # based on item ID, but that didn't seem to line up at all.
         self.unknown_arr_2 = []
         num_unknown_arr_2 = self.df.read_varint()
         for _ in range(num_unknown_arr_2):
@@ -510,10 +659,10 @@ class Inventory(Chunk):
         for item in self.items:
             item.write_to(odf)
 
-        # Unknown array
-        odf.write_varint(len(self.unknown_arr))
-        for unknown in self.unknown_arr:
-            odf.write_varint(unknown)
+        # "New" Items
+        odf.write_varint(len(self.new_items))
+        for item in self.new_items:
+            odf.write_varint(item)
 
         # Second unknown array
         odf.write_varint(len(self.unknown_arr_2))
@@ -539,12 +688,36 @@ class Inventory(Chunk):
             loadout.write_to(odf)
 
 
-    def add_item(self, item_name, item_flags):
+    def add_item(self, item_name, item_flags, flag_as_new=True):
         """
         Adds a new item with the given name to our inventory
         """
         self.last_inventory_id += 1
-        self.items.append(InventoryItem.create_new(self.last_inventory_id, item_name, item_flags))
+        self.items.append(InventORyItem.create_new(self.last_inventory_id, item_name, item_flags))
+        if flag_as_new:
+            self.new_items.append(self.last_inventory_id)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'unknown_1',
+            'last_inventory_id',
+            ])
+        self._json_object_arr(my_dict, [
+            'items',
+            ])
+        self._json_simple(my_dict, [
+            'new_items',
+            'unknown_arr_2',
+            'hats',
+            'new_hats',
+            'leeway_hat',
+            ])
+        self._json_object_arr(my_dict, [
+            'loadouts',
+            ])
+        return my_dict
 
 
 class ReDe(Chunk):
@@ -604,6 +777,16 @@ class ReDe(Chunk):
         odf.write_uint32(self.unknown)
 
 
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            'things',
+            'unknown',
+            ])
+        return my_dict
+
+
 class LootTableDeck(Chunk):
     """
     `LTde` chunk.  A single "deck" inside a Loot Table entry.  See the LTma
@@ -629,6 +812,16 @@ class LootTableDeck(Chunk):
         odf.write_uint8(self.zero)
         odf.write_string(self.name)
         self.rede.write_to(odf)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            'name',
+            ])
+        my_dict['rede'] = self.rede.to_json()
+        return my_dict
 
 
 class LootTableStatus(Chunk):
@@ -690,6 +883,23 @@ class LootTableStatus(Chunk):
                 deck.write_to(odf)
 
 
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            ])
+        my_dict['loot_groups'] = []
+        for loot_group_name, decks in self.loot_groups:
+            new_dict = {
+                    'name': loot_group_name,
+                    'decks': [],
+                    }
+            for deck in decks:
+                new_dict['decks'].append(deck.to_json())
+            my_dict['loot_groups'].append(new_dict)
+        return my_dict
+
+
 class LootDeckData(Chunk):
     """
     `LoDD` chunk.  Loot Deck... data?
@@ -715,6 +925,15 @@ class LootDeckData(Chunk):
         odf.write_varint(len(self.items))
         for name in self.items:
             odf.write_string(name)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            'items',
+            ])
+        return my_dict
 
 
 class LootDeckStatus(Chunk):
@@ -776,6 +995,29 @@ class LootDeckStatus(Chunk):
         odf.write_uint32(self.unknown_one)
 
 
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            ])
+        my_dict['decks'] = []
+        for deck_name, lodd in self.decks:
+            my_dict['decks'].append({
+                'name': deck_name,
+                'lodd': lodd.to_json(),
+                })
+        self._json_simple(my_dict, [
+            'unknown_1',
+            'unknown_2',
+            'unknown_3',
+            'unknown_4',
+            'unknown_5',
+            'unknown_6',
+            'unknown_one',
+            ])
+        return my_dict
+
+
 class ShipLocation(Chunk):
     """
     `ShlD` chunk.  Pretty sure this is ship location.
@@ -805,6 +1047,18 @@ class ShipLocation(Chunk):
         odf.write_string(self.region)
         odf.write_uint32(self.unknown_1)
         odf.write_uint8(self.unknown_2)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'flag',
+            'location',
+            'region',
+            'unknown_1',
+            'unknown_2',
+            ])
+        return my_dict
 
 
 class RevealedMapData(Chunk):
@@ -856,6 +1110,18 @@ class RevealedMapData(Chunk):
         self.data = b'\xFF'*RevealedMapData.MAP_DATA_SIZE
 
 
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            'unknown_1',
+            'size_x',
+            'size_y',
+            ])
+        my_dict['data'] = '(omitted)'
+        return my_dict
+
+
 class PWDT(Chunk):
     """
     `PWDT` chunk.  Not exactly sure what this is meant to store, though
@@ -892,6 +1158,22 @@ class PWDT(Chunk):
         odf.write_varint(len(self.unknown_varints))
         for varint in self.unknown_varints:
             odf.write_varint(varint)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'unknown_one',
+            ])
+        self._json_object_arr(my_dict, [
+            'revealed_map_data',
+            ])
+        # Munging a bit...
+        my_dict['num_unknown_varints'] = len(self.unknown_varints)
+        #self._json_simple(my_dict, [
+        #    'unknown_varints',
+        #    ])
+        return my_dict
 
 
 class Beha(Chunk):
@@ -935,6 +1217,27 @@ class Beha(Chunk):
             odf.write_uint8(unknown_4)
         odf.write_uint8(self.unknown_zero_1)
         odf.write_uint8(self.unknown_zero_2)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            ])
+        my_dict['things'] = []
+        for varint, unknown_1, unknown_2, unknown_3, unknown_4 in self.things:
+            my_dict['things'].append({
+                'varint': varint,
+                'unknown_1': unknown_1,
+                'unknown_2': unknown_2,
+                'unknown_3': unknown_3,
+                'unknown_4': unknown_4,
+                })
+        self._json_simple(my_dict, [
+            'unknown_zero_1',
+            'unknown_zero_2',
+            ])
+        return my_dict
 
 
 class Component(Chunk):
@@ -1015,6 +1318,26 @@ class Entities(Chunk):
         #for component_str, component in self.components:
         #    odf.write_string(component_str)
         #    component.write_to(odf)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            ])
+        my_dict['entities'] = []
+        # Munging a bit
+        my_dict['num_entities'] = len(self.entities)
+        #for value, name in self.entities:
+        #    my_dict['entities'].append({
+        #        'value': value,
+        #        'name': name,
+        #        })
+        self._json_simple(my_dict, [
+            'unknown_1',
+            'unknown_2',
+            ])
+        return my_dict
 
 
 class MissionData(Chunk):
@@ -1175,7 +1498,7 @@ class MissionData(Chunk):
         #    ))
 
         # Yet more debugging
-        if True:
+        if False:
             cur_pos = self.df.tell()
             theoretical_target = cur_pos+self.unknown_offset
             start_test = cur_pos + self.unknown_offset - 512
@@ -1287,6 +1610,55 @@ class MissionData(Chunk):
             self.entities.write_to(odf)
 
 
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'flag',
+            'location',
+            'another_location',
+            'unknown_1',
+            'unknown_2',
+            'unknown_3',
+            'unknown_4',
+            'active_crew',
+            'unknown_5',
+            'unknown_6',
+            'unknown_same_1',
+            'unknown_same_2',
+            'unknown_same_3',
+            'unknown_same_4',
+            'unknown_zeroes_1',
+            'unknown_zeroes_2',
+            'unknown_zeroes_3',
+            'unknown_zeroes_4',
+            'unknown_zeroes_5',
+            'unknown_7',
+            ])
+        my_dict['difficulty'] = self.difficulty.to_json()
+        self._json_simple(my_dict, [
+            'unknown_zeroes_6',
+            ])
+        my_dict['unknown_eight_bytes'] = []
+        for one, two in self.unknown_eight_bytes:
+            my_dict['unknown_eight_bytes'].append({
+                'one': one,
+                'two': two,
+                })
+        self._json_simple(my_dict, [
+            'unknown_zeroes_7',
+            'unknown_zeroes_8',
+            'unknown_zeroes_9',
+            'unknown_strings',
+            'unknown_offset',
+            ])
+        if self.unknown_offset > 0:
+            my_dict['pwdt'] = self.pwdt.to_json()
+            my_dict['unknown_end_bytes'] = self.unknown_end_bytes
+            my_dict['beha'] = self.beha.to_json()
+            my_dict['entities'] = self.entities.to_json()
+        return my_dict
+
+
 class Savefile(Datafile):
 
     # Maximum savefile version that we can parse
@@ -1296,6 +1668,24 @@ class Savefile(Datafile):
         super().__init__(filename, do_write=do_write)
         if not do_write:
             self._read()
+
+
+    def _json_simple(self, target_dict, attrs):
+        for attr in attrs:
+            target_dict[attr] = getattr(self, attr)
+
+
+    def _json_object_arr(self, target_dict, attrs):
+        for attr in attrs:
+            target_dict[attr] = []
+            for element in getattr(self, attr):
+                target_dict[attr] = element.to_json()
+
+
+    def _json_object_single(self, target_dict, attrs):
+        for attr in attrs:
+            target_dict[attr] = getattr(self, attr).to_json()
+
 
     def _read(self):
 
@@ -1477,6 +1867,36 @@ class Savefile(Datafile):
     def save_to(self, filename):
         odf = self._prep_write_data(filename)
         odf.save()
+
+
+    def to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'version',
+            ])
+        self._json_object_single(my_dict, [
+            'header',
+            'imh2',
+            'resources',
+            'ship',
+            'inventory',
+            ])
+        self._json_simple(my_dict, [
+            'crew',
+            'crew_subset',
+            ])
+        if self.rede is not None:
+            self._json_object_single(my_dict, [
+                'rede',
+                ])
+        self._json_object_single(my_dict, [
+            'loot_tables',
+            'lode',
+            'ship_location',
+            'missions',
+            ])
+
+        return my_dict
 
 
     def _read_remaining_varint(self, pos):

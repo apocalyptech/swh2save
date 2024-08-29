@@ -18,6 +18,7 @@
 
 import os
 import math
+import json
 import argparse
 import textwrap
 import itertools
@@ -236,6 +237,11 @@ def main():
             help='Dump a list of item strings that can be used with this app',
             )
 
+    mode.add_argument('-j', '--json',
+            type=str,
+            help='JSON-formatted save dump',
+            )
+
     parser.add_argument('-v', '--verbose',
             action='store_true',
             help='Show extra information when listing savegame contents and performing edits',
@@ -261,6 +267,11 @@ def main():
     parser.add_argument('-f', '--force',
             action='store_true',
             help='Overwrite the output filename without prompting, if it already exists',
+            )
+
+    parser.add_argument('--day',
+            type=int,
+            help='Sets the current day',
             )
 
     parser.add_argument('--fragments',
@@ -449,6 +460,12 @@ def main():
                 """,
             )
 
+    parser.add_argument('--no-new-items',
+            dest='set_new_item',
+            action='store_false',
+            help="When adding new items/hats, don't mark them as 'new'",
+            )
+
     parser.add_argument('filename',
             type=str,
             nargs=1,
@@ -475,6 +492,10 @@ def main():
         args.endgame_ship_pack = True
         args.endgame_weapon_pack = True
         args.endgame_utility_pack = True
+
+    # Check validity of --day arg
+    if args.day is not None and args.day < 1:
+        parser.error('--day must be at least 1')
 
     ###
     ### Process additions of key items and unlocks.  There are quite a few
@@ -676,6 +697,7 @@ def main():
 
         print(f'Savefile Version: {save.version}')
         print('General Game Information:')
+        print(f' - Day: {save.imh2.days_elapsed+1}')
         print(f' - Water (money): {save.resources.water}')
         print(f' - Fragments: {save.resources.fragments}')
         print(f'Crew Unlocked: {len(save.header.crew)}')
@@ -775,6 +797,28 @@ def main():
                         print('.', end='')
                 print('')
 
+    # Doing a JSON dump
+    elif args.json is not None:
+
+        if not args.force and os.path.exists(args.json):
+            print(f'WARNING: {args.json} already exists.')
+            response = input('Overwrite (y/N)? ').strip().lower()
+            if response == '' or response[0] != 'y':
+                print('Exiting!')
+                print('')
+                return
+            print('')
+
+        with open(args.json, 'w') as odf:
+            json.dump(
+                    save.to_json(),
+                    odf,
+                    indent=2,
+                    )
+        print('')
+        print(f'Wrote to: {args.json}')
+        print('')
+
     # Otherwise, we're actually making some edits, theoretically
     elif args.output:
 
@@ -807,6 +851,16 @@ def main():
         # Show the filename again
         print(f'Processing: {args.filename}')
         print('')
+
+        # Current Day
+        if args.day is not None:
+            if save.imh2.days_elapsed == args.day - 1:
+                print(f' - Skipping setting the day; already set to {args.day}')
+            else:
+                print(f' - Setting current day to: {args.day}')
+                save.imh2.days_elapsed = args.day - 1
+                do_save = True
+
 
         # Water (money)
         if args.water is not None:
@@ -881,7 +935,7 @@ def main():
                             lookup_sort=True,
                             )
                 for item in sorted(needed_keyitems):
-                    save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM)
+                    save.inventory.add_item(item, InventoryItem.ItemFlag.KEYITEM, flag_as_new=args.set_new_item)
                 do_save = True
         elif user_add_key_item:
             print('- Skipping Key Item unlocks due to other removals requested')
@@ -921,7 +975,8 @@ def main():
             else:
                 print(f'- Unlocking {len(needed_hats)} hats')
                 save.inventory.hats.extend(sorted(needed_hats))
-                save.inventory.new_hats.extend(sorted(needed_hats))
+                if args.set_new_item:
+                    save.inventory.new_hats.extend(sorted(needed_hats))
                 do_save = True
 
         # A cluster of inventory args which are all handled in the same way
@@ -933,7 +988,7 @@ def main():
             if arg:
                 print(f'- Adding {len(arg)} {label} to inventory')
                 for item in arg:
-                    save.inventory.add_item(item, flag)
+                    save.inventory.add_item(item, flag, flag_as_new=args.set_new_item)
                 do_save = True
 
 
@@ -966,7 +1021,7 @@ def main():
                     ]
             print(f'- Giving {len(to_give)} items in a ship equipment pack')
             for item in to_give:
-                save.inventory.add_item(item, InventoryItem.ItemFlag.SHIP_EQUIPMENT)
+                save.inventory.add_item(item, InventoryItem.ItemFlag.SHIP_EQUIPMENT, flag_as_new=args.set_new_item)
             do_save = True
 
         # Endgame weapon pack
@@ -1005,7 +1060,7 @@ def main():
                     ]
             print(f'- Giving {len(to_give)} items in a weapon equipment pack')
             for item in to_give:
-                save.inventory.add_item(item, InventoryItem.ItemFlag.WEAPON)
+                save.inventory.add_item(item, InventoryItem.ItemFlag.WEAPON, flag_as_new=args.set_new_item)
             do_save = True
 
         # Endgame utility equipment pack
@@ -1095,7 +1150,7 @@ def main():
                     ]
             print(f'- Giving {len(to_give)} items in a utility equipment pack')
             for item in to_give:
-                save.inventory.add_item(item, InventoryItem.ItemFlag.UTILITY)
+                save.inventory.add_item(item, InventoryItem.ItemFlag.UTILITY, flag_as_new=args.set_new_item)
             do_save = True
 
         # Save out, assuming we did anything
