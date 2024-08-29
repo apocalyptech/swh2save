@@ -423,8 +423,10 @@ class InventoryItem(Chunk):
         # The name
         self.name = self.df.read_string()
 
-        # These basically always appear to be 0
+        # This basically always appear to be 0
         self.unknown_4 = self.df.read_uint32()
+
+        # TODO: I think this is 1 if the item's been used in the current day
         self.unknown_5 = self.df.read_uint32()
         #print(f'{self.unknown_1} {self.id} {self.flags} {self.name} {self.unknown_4} {self.unknown_5}')
 
@@ -1142,11 +1144,14 @@ class PWDT(Chunk):
         for _ in range(num_revealed_map_data):
             self.revealed_map_data.append(RevealedMapData(self.df))
 
-        # Then some more data; maybe a series of varints?
-        self.unknown_varints = []
-        num_unknown_varints = self.df.read_varint()
-        for _ in range(num_unknown_varints):
-            self.unknown_varints.append(self.df.read_varint())
+        # I *think* that these are Entity IDs, as defined in the later
+        # ECSD chunk.  I have not confirmed as such, though.  (And I
+        # don't know what these entities' presence in this list
+        # signifies.)
+        self.unknown_entity_ids = []
+        num_unknown_entity_ids = self.df.read_varint()
+        for _ in range(num_unknown_entity_ids):
+            self.unknown_entity_ids.append(self.df.read_varint())
 
 
     def _write_to(self, odf):
@@ -1155,9 +1160,9 @@ class PWDT(Chunk):
         odf.write_varint(len(self.revealed_map_data))
         for data in self.revealed_map_data:
             data.write_to(odf)
-        odf.write_varint(len(self.unknown_varints))
-        for varint in self.unknown_varints:
-            odf.write_varint(varint)
+        odf.write_varint(len(self.unknown_entity_ids))
+        for entity_id in self.unknown_entity_ids:
+            odf.write_varint(entity_id)
 
 
     def _to_json(self):
@@ -1169,9 +1174,9 @@ class PWDT(Chunk):
             'revealed_map_data',
             ])
         # Munging a bit...
-        my_dict['num_unknown_varints'] = len(self.unknown_varints)
+        my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
         #self._json_simple(my_dict, [
-        #    'unknown_varints',
+        #    'unknown_entity_ids',
         #    ])
         return my_dict
 
@@ -1190,15 +1195,19 @@ class Beha(Chunk):
         # identifiers, actually)
         self.zero = self.df.read_uint8()
 
-        self.things = []
-        num_things = self.df.read_varint()
-        for _ in range(num_things):
-            initial_varint = self.df.read_varint()
+        # I haven't *actually* mapped these out to confirm, but I am 99% sure that
+        # the first varint corresponds to an entity ID as defined in the ECSD chunk.
+        # Presumably this list is storing parameters describing the entity's current
+        # behavior state in its behavior tree.
+        self.entities = []
+        num_entities = self.df.read_varint()
+        for _ in range(num_entities):
+            entity_id = self.df.read_varint()
             unknown_1 = self.df.read_uint8()
             unknown_2 = self.df.read_uint8()
             unknown_3 = self.df.read_uint8()
             unknown_4 = self.df.read_uint8()
-            self.things.append((initial_varint, unknown_1, unknown_2, unknown_3, unknown_4))
+            self.entities.append((entity_id, unknown_1, unknown_2, unknown_3, unknown_4))
 
         # Then a couple extra unknown zeroes
         self.unknown_zero_1 = self.df.read_uint8()
@@ -1208,9 +1217,9 @@ class Beha(Chunk):
     def _write_to(self, odf):
 
         odf.write_uint8(self.zero)
-        odf.write_varint(len(self.things))
-        for varint, unknown_1, unknown_2, unknown_3, unknown_4 in self.things:
-            odf.write_varint(varint)
+        odf.write_varint(len(self.entities))
+        for entity_id, unknown_1, unknown_2, unknown_3, unknown_4 in self.entities:
+            odf.write_varint(entity_id)
             odf.write_uint8(unknown_1)
             odf.write_uint8(unknown_2)
             odf.write_uint8(unknown_3)
@@ -1224,10 +1233,10 @@ class Beha(Chunk):
         self._json_simple(my_dict, [
             'zero',
             ])
-        my_dict['things'] = []
-        for varint, unknown_1, unknown_2, unknown_3, unknown_4 in self.things:
-            my_dict['things'].append({
-                'varint': varint,
+        my_dict['entities'] = []
+        for entity_id, unknown_1, unknown_2, unknown_3, unknown_4 in self.entities:
+            my_dict['entities'].append({
+                'entity_id': entity_id,
                 'unknown_1': unknown_1,
                 'unknown_2': unknown_2,
                 'unknown_3': unknown_3,
@@ -1280,8 +1289,9 @@ class Entities(Chunk):
         # identifiers, actually)
         self.zero = self.df.read_uint8()
 
-        # Big ol' list.  I assume the value is an ID of some sort, but
-        # maybe it's a position somehow, instead?
+        # Big ol' list.  Almost 100% sure this is a list of entities, mapping
+        # their ID to the type of object they are. (value -> name).  Other data
+        # will presumably refer to these IDs.
         self.entities = []
         num_entities = self.df.read_varint()
         for _ in range(num_entities):
