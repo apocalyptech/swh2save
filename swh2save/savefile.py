@@ -894,6 +894,129 @@ class PWDT(Chunk):
             odf.write_varint(varint)
 
 
+class Beha(Chunk):
+    """
+    `Beha` chunk.  Related to Behaviors, I guess?  In the game data, these seem
+    to relate to enemy ships on the map, which would make sense given where it's
+    stored in the savegame.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'Beha')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.things = []
+        num_things = self.df.read_varint()
+        for _ in range(num_things):
+            initial_varint = self.df.read_varint()
+            unknown_1 = self.df.read_uint8()
+            unknown_2 = self.df.read_uint8()
+            unknown_3 = self.df.read_uint8()
+            unknown_4 = self.df.read_uint8()
+            self.things.append((initial_varint, unknown_1, unknown_2, unknown_3, unknown_4))
+
+        # Then a couple extra unknown zeroes
+        self.unknown_zero_1 = self.df.read_uint8()
+        self.unknown_zero_2 = self.df.read_uint8()
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_varint(len(self.things))
+        for varint, unknown_1, unknown_2, unknown_3, unknown_4 in self.things:
+            odf.write_varint(varint)
+            odf.write_uint8(unknown_1)
+            odf.write_uint8(unknown_2)
+            odf.write_uint8(unknown_3)
+            odf.write_uint8(unknown_4)
+        odf.write_uint8(self.unknown_zero_1)
+        odf.write_uint8(self.unknown_zero_2)
+
+
+class Component(Chunk):
+    """
+    `ECTa` chunk.  I'm calling this "components" since the strings which
+    prefix each of these chunks are mostly suffixed with `Component` (there
+    are a few exceptions, but whatever -- the "CT" in the name could refer
+    to Component, too).
+
+    My current conundrum: It feels like these chunks might have varying
+    formats depending on what kind of data is stored.  I suspect that to
+    properly parse them, we'd need to pass in the component name (which would
+    be stored in a string directly before the ECTa chunk), and then switch
+    our behavior based on that name.  It could be that I'm missing some
+    similarities, though -- I haven't looked through too exhaustively yet.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'ECTa')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+
+
+class Entities(Chunk):
+    """
+    `ECSD` chunk.  I think this is defining entities on the map
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'ECSD')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        # Big ol' list.  I assume the value is an ID of some sort, but
+        # maybe it's a position somehow, instead?
+        self.entities = []
+        num_entities = self.df.read_varint()
+        for _ in range(num_entities):
+            value = self.df.read_varint()
+            name = self.df.read_string()
+            self.entities.append((value, name))
+
+        # A bit of unknown data; first two appear to be a pair of u32s.
+        self.unknown_1 = self.df.read_uint32()
+        self.unknown_2 = self.df.read_uint32()
+
+        # Then, we have, apparently, always 70 components, composed of
+        # a string followed by an ECTa chunk.  I don't see anything
+        # immediately which seems to provide that number, though I admit
+        # I didn't look long
+        #self.components = []
+        #for _ in range(70):
+        #    component_str = self.df.read_string()
+        #    component = Component(self.df)
+        #    self.components.append((component_str, component))
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_varint(len(self.entities))
+        for value, name in self.entities:
+            odf.write_varint(value)
+            odf.write_string(name)
+
+        odf.write_uint32(self.unknown_1)
+        odf.write_uint32(self.unknown_2)
+
+        #for component_str, component in self.components:
+        #    odf.write_string(component_str)
+        #    component.write_to(odf)
+
+
 class MissionData(Chunk):
     """
     `MsnD` chunk.  Pretty sure this is mission data.
@@ -940,6 +1063,8 @@ class MissionData(Chunk):
         self.unknown_same_2 = self.df.read_uint32()
         self.unknown_same_3 = self.df.read_uint32()
         self.unknown_same_4 = self.df.read_uint32()
+        if self.unknown_same_1 != self.unknown_same_3 or self.unknown_same_2 != self.unknown_same_4:
+            print("NOTICE: unknown_same_* in MsnD doesn't look how we think it should...")
 
         # Then a further five bytes which, in my saves, are all zero.  Go team?
         self.unknown_zeroes_1 = self.df.read_uint8()
@@ -985,7 +1110,8 @@ class MissionData(Chunk):
 
         # Debugging...
         if False:
-            print(' | '.join([str(i) for i in [
+            print('  ' + ' | '.join([str(i) for i in [
+                self.flag,
                 self.location,
                 self.another_location,
                 self.unknown_1,
@@ -995,17 +1121,20 @@ class MissionData(Chunk):
                 #','.join(self.active_crew),
                 self.unknown_5,
                 self.unknown_6,
-                self.unknown_7,
+                self.unknown_same_1,
+                self.unknown_same_2,
                 self.unknown_zeroes_1,
                 self.unknown_zeroes_2,
                 self.unknown_zeroes_3,
                 self.unknown_zeroes_4,
                 self.unknown_zeroes_5,
+                self.unknown_7,
                 self.unknown_zeroes_6,
+                self.unknown_eight_bytes,
                 self.unknown_zeroes_7,
                 self.unknown_zeroes_8,
                 self.unknown_zeroes_9,
-                self.unknown_eight_bytes,
+                self.unknown_strings,
                 ]]))
 
         # Then a varint of some sort.  This feels like it's *got* to be an
@@ -1045,9 +1174,42 @@ class MissionData(Chunk):
         #    data,
         #    ))
 
+        # Yet more debugging
+        if True:
+            cur_pos = self.df.tell()
+            theoretical_target = cur_pos+self.unknown_offset
+            start_test = cur_pos + self.unknown_offset - 512
+            self.df.seek(start_test)
+            remaining_data = self.df.read()
+            interested = {
+                    b'LuaW': None,
+                    b'PeCo': None,
+                    }
+            cur_idx = 0
+            for cur_idx in range(0, len(remaining_data)-4):
+                test_chunk = remaining_data[cur_idx:cur_idx+4]
+                if test_chunk in interested:
+                    interested[test_chunk] = start_test + cur_idx
+                    if all([v is not None for v in interested.values()]):
+                        break
+            if any([v is None for v in interested.values()]):
+                print("  (skipping, don't have the full dataset)")
+            else:
+                print('  -> 0x{:X} - '.format(theoretical_target) + ', '.join([
+                    '{} (0x{:X}): {}'.format(
+                            k.decode('latin1'),
+                            v,
+                            v-theoretical_target,
+                        ) for k,v in interested.items()
+                    ]))
+            print('')
+            self.df.seek(cur_pos)
+
         # Well, regardless of how exactly to interpret that offset, it seems that
         # if it's 0 we skip a bunch of processing, but otherwise we have some
         # more chunks to read in.
+        # TODO: I kind of suspect that our offset, plus all this processing, belongs
+        # out in the "main" area instead of nested inside the MsnD chunk.
         if self.unknown_offset > 0:
             self.pwdt = PWDT(self.df)
 
@@ -1057,9 +1219,17 @@ class MissionData(Chunk):
             self.unknown_end_bytes = []
             for _ in range(12):
                 self.unknown_end_bytes.append(self.df.read_uint8())
+
+            # Behavior state, I guess?
+            self.beha = Beha(self.df)
+
+            # Entities, I think?
+            self.entities = Entities(self.df)
         else:
             self.pwdt = None
             self.unknown_end_bytes = None
+            self.beha = None
+            self.entities = None
 
 
     def _write_to(self, odf):
@@ -1113,6 +1283,8 @@ class MissionData(Chunk):
             self.pwdt.write_to(odf)
             for value in self.unknown_end_bytes:
                 odf.write_uint8(value)
+            self.beha.write_to(odf)
+            self.entities.write_to(odf)
 
 
 class Savefile(Datafile):
