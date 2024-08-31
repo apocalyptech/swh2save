@@ -23,7 +23,64 @@ import binascii
 
 from .datafile import Datafile
 
-class Chunk:
+
+class Serializable:
+    """
+    An object that we want to be able to JSONify.  Note that despite
+    the function names, these functions themselves don't actually do
+    any JSON; we're basically just turning ourselves into a dict.
+    """
+
+
+    def to_json(self, verbose=False, initial_dict=None):
+        """
+        The main entry point.
+        """
+        if initial_dict is None:
+            initial_dict = {}
+        initial_dict |= self._to_json(verbose)
+        return initial_dict
+
+
+    @abc.abstractmethod
+    def _to_json(self, verbose=False):
+        """
+        This method needs to be implemented in the implementing class,
+        to actually do the serialization.
+        """
+        return {}
+
+
+    def _json_simple(self, target_dict, attrs):
+        """
+        Helper method to loop over a bunch of attribute strings and
+        add in their raw values to our serialization.
+        """
+        for attr in attrs:
+            target_dict[attr] = getattr(self, attr)
+
+
+    def _json_object_single(self, target_dict, attrs, verbose=False):
+        """
+        Helper method to loop over a bunch of attribute strings,
+        interpreting them as a single instance of a Serializable object.
+        """
+        for attr in attrs:
+            target_dict[attr] = getattr(self, attr).to_json(verbose)
+
+
+    def _json_object_arr(self, target_dict, attrs, verbose=False):
+        """
+        Helper method to loop over a bunch of attribute strings,
+        interpreting them as an array of Serializable objects.
+        """
+        for attr in attrs:
+            target_dict[attr] = []
+            for element in getattr(self, attr):
+                target_dict[attr].append(element.to_json(verbose))
+
+
+class Chunk(Serializable):
     """
     A chunk that we're wrapping with an object.
     """
@@ -45,32 +102,14 @@ class Chunk:
         return
 
 
-    def to_json(self):
-        my_dict = {'chunk': self.header}
-        my_dict |= self._to_json()
-        return my_dict
-
-
-    @abc.abstractmethod
-    def _to_json(self):
-        return {}
-
-
-    def _json_simple(self, target_dict, attrs):
-        for attr in attrs:
-            target_dict[attr] = getattr(self, attr)
-
-
-    def _json_object_arr(self, target_dict, attrs):
-        for attr in attrs:
-            target_dict[attr] = []
-            for element in getattr(self, attr):
-                target_dict[attr].append(element.to_json())
-
-
-    def _json_object_single(self, target_dict, attrs):
-        for attr in attrs:
-            target_dict[attr] = getattr(self, attr).to_json()
+    def to_json(self, verbose=False):
+        """
+        We want our basic serialization to include the chunk name/header.
+        """
+        return super().to_json(
+                verbose=verbose,
+                initial_dict={'chunk': self.header},
+                )
 
 
 class Difficulty(Chunk):
@@ -94,7 +133,7 @@ class Difficulty(Chunk):
             odf.write_uint32(setting)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'unknown',
@@ -148,7 +187,7 @@ class Imh2(Chunk):
         odf.write_uint8(self.small_unknown_6)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'unknown_start',
@@ -188,7 +227,7 @@ class GameResources(Chunk):
         odf.write_uint32(self.water)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'unknown',
@@ -282,7 +321,7 @@ class Ship(Chunk):
         odf.write_uint16(self.unknown_s1)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'unknown',
@@ -365,7 +404,7 @@ class Header(Chunk):
             odf.write_string(bot)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero_1',
@@ -379,7 +418,7 @@ class Header(Chunk):
             ])
         self._json_object_arr(my_dict, [
             'difficulties',
-            ])
+            ], verbose)
         self._json_simple(my_dict, [
             'cur_location',
             'cur_region',
@@ -482,7 +521,7 @@ class InventoryItem(Chunk):
         return InventoryItem(odf)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'unknown_1',
@@ -571,7 +610,7 @@ class Loadout(Chunk):
             return value
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
@@ -700,7 +739,7 @@ class Inventory(Chunk):
             self.new_items.append(self.last_inventory_id)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'unknown_1',
@@ -708,7 +747,7 @@ class Inventory(Chunk):
             ])
         self._json_object_arr(my_dict, [
             'items',
-            ])
+            ], verbose)
         self._json_simple(my_dict, [
             'new_items',
             'unknown_arr_2',
@@ -718,7 +757,7 @@ class Inventory(Chunk):
             ])
         self._json_object_arr(my_dict, [
             'loadouts',
-            ])
+            ], verbose)
         return my_dict
 
 
@@ -779,7 +818,7 @@ class ReDe(Chunk):
         odf.write_uint32(self.unknown)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
@@ -816,13 +855,13 @@ class LootTableDeck(Chunk):
         self.rede.write_to(odf)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
             'name',
             ])
-        my_dict['rede'] = self.rede.to_json()
+        my_dict['rede'] = self.rede.to_json(verbose)
         return my_dict
 
 
@@ -885,7 +924,7 @@ class LootTableStatus(Chunk):
                 deck.write_to(odf)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
@@ -897,7 +936,7 @@ class LootTableStatus(Chunk):
                     'decks': [],
                     }
             for deck in decks:
-                new_dict['decks'].append(deck.to_json())
+                new_dict['decks'].append(deck.to_json(verbose))
             my_dict['loot_groups'].append(new_dict)
         return my_dict
 
@@ -929,7 +968,7 @@ class LootDeckData(Chunk):
             odf.write_string(name)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
@@ -997,7 +1036,7 @@ class LootDeckStatus(Chunk):
         odf.write_uint32(self.unknown_one)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
@@ -1006,7 +1045,7 @@ class LootDeckStatus(Chunk):
         for deck_name, lodd in self.decks:
             my_dict['decks'].append({
                 'name': deck_name,
-                'lodd': lodd.to_json(),
+                'lodd': lodd.to_json(verbose),
                 })
         self._json_simple(my_dict, [
             'unknown_1',
@@ -1051,7 +1090,7 @@ class ShipLocation(Chunk):
         odf.write_uint8(self.unknown_2)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'flag',
@@ -1112,7 +1151,7 @@ class RevealedMapData(Chunk):
         self.data = b'\xFF'*RevealedMapData.MAP_DATA_SIZE
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
@@ -1121,6 +1160,8 @@ class RevealedMapData(Chunk):
             'size_y',
             ])
         # Munging a bit...
+        # TODO: should maybe have a couple of levels of verbosity; with
+        # our "basic" verbosity I still don't want to include the data here.
         my_dict['data'] = '(omitted)'
         return my_dict
 
@@ -1172,7 +1213,7 @@ class BehaviorState(Chunk):
         odf.write_uint8(self.unknown_zero_2)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
@@ -1234,19 +1275,21 @@ class Entities(Chunk):
         odf.write_uint32(self.unknown_2)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
             ])
         my_dict['entities'] = []
         # Munging a bit...
-        #my_dict['num_entities'] = len(self.entities)
-        for value, name in self.entities:
-            my_dict['entities'].append({
-                'value': value,
-                'name': name,
-                })
+        if verbose:
+            for value, name in self.entities:
+                my_dict['entities'].append({
+                    'value': value,
+                    'name': name,
+                    })
+        else:
+            my_dict['num_entities'] = len(self.entities)
         self._json_simple(my_dict, [
             'unknown_1',
             'unknown_2',
@@ -1322,24 +1365,28 @@ class WorldData(Chunk):
         self.entities.write_to(odf)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'unknown_one',
             ])
         self._json_object_arr(my_dict, [
             'revealed_map_data',
-            ])
+            ], verbose)
         # Munging a bit...
-        #my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
+        if verbose:
+            self._json_simple(my_dict, [
+                'unknown_entity_ids',
+                ])
+        else:
+            my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
         self._json_simple(my_dict, [
-            'unknown_entity_ids',
             'unknown_end_bytes',
             ])
         self._json_object_single(my_dict, [
             'beha',
             'entities',
-            ])
+            ], verbose)
         return my_dict
 
 
@@ -1515,7 +1562,7 @@ class MissionData(Chunk):
             odf.write_string(string)
 
 
-    def _to_json(self):
+    def _to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'flag',
@@ -1539,7 +1586,7 @@ class MissionData(Chunk):
             'unknown_zeroes_5',
             'unknown_7',
             ])
-        my_dict['difficulty'] = self.difficulty.to_json()
+        my_dict['difficulty'] = self.difficulty.to_json(verbose)
         self._json_simple(my_dict, [
             'unknown_zeroes_6',
             ])
@@ -1772,32 +1819,17 @@ class UnparsedData:
                 raise RuntimeError(f'Unknown segment type in remaining data: {type(segment)}')
 
 
-class Savefile(Datafile):
+class Savefile(Datafile, Serializable):
+
 
     # Maximum savefile version that we can parse
     MAX_VERSION = 1
+
 
     def __init__(self, filename, do_write=False):
         super().__init__(filename, do_write=do_write)
         if not do_write:
             self._read()
-
-
-    def _json_simple(self, target_dict, attrs):
-        for attr in attrs:
-            target_dict[attr] = getattr(self, attr)
-
-
-    def _json_object_arr(self, target_dict, attrs):
-        for attr in attrs:
-            target_dict[attr] = []
-            for element in getattr(self, attr):
-                target_dict[attr] = element.to_json()
-
-
-    def _json_object_single(self, target_dict, attrs):
-        for attr in attrs:
-            target_dict[attr] = getattr(self, attr).to_json()
 
 
     def _read(self):
@@ -2020,7 +2052,7 @@ class Savefile(Datafile):
         odf.save()
 
 
-    def to_json(self):
+    def to_json(self, verbose=False):
         my_dict = {}
         self._json_simple(my_dict, [
             'version',
@@ -2031,7 +2063,7 @@ class Savefile(Datafile):
             'resources',
             'ship',
             'inventory',
-            ])
+            ], verbose)
         self._json_simple(my_dict, [
             'crew',
             'crew_subset',
@@ -2039,17 +2071,18 @@ class Savefile(Datafile):
         if self.rede is not None:
             self._json_object_single(my_dict, [
                 'rede',
-                ])
+                ], verbose)
         self._json_object_single(my_dict, [
             'loot_tables',
             'lode',
             'ship_location',
             'missions',
-            ])
+            ], verbose)
         self._json_simple(my_dict, [
             'pbar_offset',
             ])
-        if self.unknown_offset > 0:
-            my_dict['pwdt'] = self.pwdt.to_json()
+        if self.pbar_offset > 0:
+            my_dict['pwdt'] = self.pwdt.to_json(verbose)
+            my_dict['skipped_data'] = '(omitted)'
         return my_dict
 

@@ -244,7 +244,7 @@ def main():
 
     parser.add_argument('-v', '--verbose',
             action='store_true',
-            help='Show extra information when listing savegame contents and performing edits',
+            help='Show extra information when listing savegame contents, performing edits, and outputting JSON',
             )
 
     parser.add_argument('-d', '--debug',
@@ -811,7 +811,7 @@ def main():
 
         with open(args.json, 'w') as odf:
             json.dump(
-                    save.to_json(),
+                    save.to_json(args.verbose),
                     odf,
                     indent=2,
                     )
