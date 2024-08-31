@@ -1125,66 +1125,9 @@ class RevealedMapData(Chunk):
         return my_dict
 
 
-class PWDT(Chunk):
+class BehaviorState(Chunk):
     """
-    `PWDT` chunk.  Not exactly sure what this is meant to store, though
-    the main thing seems to be storing the various revealed-map chunks.
-    Could the "WD" mean "World Discovery?"  Seems like a stretch, esp.
-    since I have no idea what the P or T would mean.  :)
-    """
-
-    def __init__(self, df):
-        super().__init__(df, 'PWDT')
-
-        # Seems to always be one?
-        self.unknown_one = self.df.read_uint8()
-
-        # Revealed map data
-        self.revealed_map_data = []
-        num_revealed_map_data = self.df.read_varint()
-        for _ in range(num_revealed_map_data):
-            self.revealed_map_data.append(RevealedMapData(self.df))
-
-        # I *think* that these are Entity IDs, as defined in the later
-        # ECSD chunk.  I have not confirmed as such, though.  (And I
-        # don't know what these entities' presence in this list
-        # signifies.)
-        self.unknown_entity_ids = []
-        num_unknown_entity_ids = self.df.read_varint()
-        for _ in range(num_unknown_entity_ids):
-            self.unknown_entity_ids.append(self.df.read_varint())
-
-
-    def _write_to(self, odf):
-
-        odf.write_uint8(self.unknown_one)
-        odf.write_varint(len(self.revealed_map_data))
-        for data in self.revealed_map_data:
-            data.write_to(odf)
-        odf.write_varint(len(self.unknown_entity_ids))
-        for entity_id in self.unknown_entity_ids:
-            odf.write_varint(entity_id)
-
-
-    def _to_json(self):
-        my_dict = {}
-        self._json_simple(my_dict, [
-            'unknown_one',
-            ])
-        self._json_object_arr(my_dict, [
-            'revealed_map_data',
-            ])
-        # Munging a bit...
-        #my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
-        self._json_simple(my_dict, [
-            'unknown_entity_ids',
-            ])
-        return my_dict
-
-
-class Beha(Chunk):
-    """
-    `Beha` chunk.  Related to Behaviors, I guess?  In the game data, these seem
+    `Beha` chunk.  Behavior States, it seems.  In the game data, these seem
     to relate to enemy ships on the map, which would make sense given where it's
     stored in the savegame.
     """
@@ -1250,34 +1193,6 @@ class Beha(Chunk):
         return my_dict
 
 
-class Component(Chunk):
-    """
-    `ECTa` chunk.  I'm calling this "components" since the strings which
-    prefix each of these chunks are mostly suffixed with `Component` (there
-    are a few exceptions, but whatever -- the "CT" in the name could refer
-    to Component, too).
-
-    My current conundrum: It feels like these chunks might have varying
-    formats depending on what kind of data is stored.  I suspect that to
-    properly parse them, we'd need to pass in the component name (which would
-    be stored in a string directly before the ECTa chunk), and then switch
-    our behavior based on that name.  It could be that I'm missing some
-    similarities, though -- I haven't looked through too exhaustively yet.
-    """
-
-    def __init__(self, df):
-        super().__init__(df, 'ECTa')
-
-        # Seems to always be zero (this seems quite common after chunk
-        # identifiers, actually)
-        self.zero = self.df.read_uint8()
-
-
-    def _write_to(self, odf):
-
-        odf.write_uint8(self.zero)
-
-
 class Entities(Chunk):
     """
     `ECSD` chunk.  I think this is defining entities on the map.
@@ -1306,16 +1221,6 @@ class Entities(Chunk):
         self.unknown_1 = self.df.read_uint32()
         self.unknown_2 = self.df.read_uint32()
 
-        # Then, we have, apparently, always 70 components, composed of
-        # a string followed by an ECTa chunk.  I don't see anything
-        # immediately which seems to provide that number, though I admit
-        # I didn't look long
-        #self.components = []
-        #for _ in range(70):
-        #    component_str = self.df.read_string()
-        #    component = Component(self.df)
-        #    self.components.append((component_str, component))
-
 
     def _write_to(self, odf):
 
@@ -1327,10 +1232,6 @@ class Entities(Chunk):
 
         odf.write_uint32(self.unknown_1)
         odf.write_uint32(self.unknown_2)
-
-        #for component_str, component in self.components:
-        #    odf.write_string(component_str)
-        #    component.write_to(odf)
 
 
     def _to_json(self):
@@ -1351,6 +1252,129 @@ class Entities(Chunk):
             'unknown_2',
             ])
         return my_dict
+
+
+class WorldData(Chunk):
+    """
+    `PWDT` chunk.  Not exactly sure what this is meant to store, though
+    the main thing seems to be storing the various revealed-map chunks.
+    Could the "WD" mean "World Discovery?"  Seems like a stretch, esp.
+    since I have no idea what the P or T would mean.  :)
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'PWDT')
+
+        # Seems to always be one?
+        self.unknown_one = self.df.read_uint8()
+
+        # Revealed map data
+        self.revealed_map_data = []
+        num_revealed_map_data = self.df.read_varint()
+        for _ in range(num_revealed_map_data):
+            self.revealed_map_data.append(RevealedMapData(self.df))
+
+        # I'm pretty sure that the stuff below belongs here in the PWDT
+        # chunk, since the "behaviors" seem to just be for overworld
+        # enemies, and the Entities processing seems to be similarly map-
+        # related.  We don't actually *care* about anything beyond the
+        # revealed map data, for save-editor purposes, and once we're
+        # through with this chunk, the main processing ends up skipping
+        # a bunch.  So we could probably comment the rest of this file
+        # and be fine.  Still, since I've already mapped it out, it may
+        # as well stay.
+
+        # I *think* that these are Entity IDs, as defined in the later
+        # ECSD chunk.  I have not confirmed as such, though.  (And I
+        # don't know what these entities' presence in this list
+        # signifies.)
+        self.unknown_entity_ids = []
+        num_unknown_entity_ids = self.df.read_varint()
+        for _ in range(num_unknown_entity_ids):
+            self.unknown_entity_ids.append(self.df.read_varint())
+
+        # No clue what's up with these; there are some patterns to be seen,
+        # but they remain pretty opaque.  Does seem to be twelve bytes quite
+        # consistently, though
+        self.unknown_end_bytes = []
+        for _ in range(12):
+            self.unknown_end_bytes.append(self.df.read_uint8())
+
+        # Behavior state
+        self.beha = BehaviorState(self.df)
+
+        # World Map Entities
+        self.entities = Entities(self.df)
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.unknown_one)
+        odf.write_varint(len(self.revealed_map_data))
+        for data in self.revealed_map_data:
+            data.write_to(odf)
+        odf.write_varint(len(self.unknown_entity_ids))
+        for entity_id in self.unknown_entity_ids:
+            odf.write_varint(entity_id)
+        for value in self.unknown_end_bytes:
+            odf.write_uint8(value)
+        self.beha.write_to(odf)
+        self.entities.write_to(odf)
+
+
+    def _to_json(self):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'unknown_one',
+            ])
+        self._json_object_arr(my_dict, [
+            'revealed_map_data',
+            ])
+        # Munging a bit...
+        #my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
+        self._json_simple(my_dict, [
+            'unknown_entity_ids',
+            'unknown_end_bytes',
+            ])
+        self._json_object_single(my_dict, [
+            'beha',
+            'entities',
+            ])
+        return my_dict
+
+
+# Commenting this for now.  As mentioned in the docstring, I suspect that
+# each instance of this chunk technically has its own serialization format,
+# and I don't really feel like figuring that out for 70 distinct types.
+# It could be that they're all technically the same format and I could just
+# figure it out once, but since we can skip over the data for now, that's
+# what I'm doing.
+#class Component(Chunk):
+#    """
+#    `ECTa` chunk.  I'm calling this "components" since the strings which
+#    prefix each of these chunks are mostly suffixed with `Component` (there
+#    are a few exceptions, but whatever -- the "CT" in the name could refer
+#    to Component, too).
+#
+#    My current conundrum: It feels like these chunks might have varying
+#    formats depending on what kind of data is stored.  I suspect that to
+#    properly parse them, we'd need to pass in the component name (which would
+#    be stored in a string directly before the ECTa chunk), and then switch
+#    our behavior based on that name.  It could be that I'm missing some
+#    similarities, though -- I haven't looked through too exhaustively yet.
+#    """
+#
+#    def __init__(self, df):
+#        super().__init__(df, 'ECTa')
+#
+#        # Seems to always be zero (this seems quite common after chunk
+#        # identifiers, actually)
+#        self.zero = self.df.read_uint8()
+#
+#
+#    def _write_to(self, odf):
+#
+#        odf.write_uint8(self.zero)
 
 
 class MissionData(Chunk):
@@ -1534,6 +1558,220 @@ class MissionData(Chunk):
         return my_dict
 
 
+class UnparsedData:
+    """
+    So it's unlikely that I'm going to end up decoding the *entire*
+    savefile, and even if it eventually happens, I am certainly not
+    going to finish that process for some time.  This leaves me with
+    the problem of string references in any unprocessed bit of the
+    save.  Namely: any edit I make which changes the length of the
+    file in any way is almost certainly going to break string
+    references in the unparsed bit, after the edit.  There are string
+    references very near the end of 300kb saves which reference
+    early-save strings, etc.
+
+    So, what to do?  Well: *detecting* string references in the data
+    is actually not a huge problem.  Detecting string definitions is
+    a bit prone to false-positives, but we don't really have to worry
+    about that too much -- a reference will point back to a string
+    we've seen earlier on, and we can match on the strlen for an even
+    stronger match.  The chances of false positives on the reference
+    detection is, IMO, low enough that it's not worth worrying about.
+
+    The plan, then: once I get to the unparsed data, brute-force search
+    the remaining data for more strings and string references, making
+    a list of string references as I go.  Then when we write out the
+    file, instead of just blindly writing out the remaining data,
+    we'll have to go through and update them as-needed.  Kind of a pain,
+    but I think it should be safe to do, and allow this util to be
+    Actually Useful.
+
+    If I ever get to the point of having decoded the entire savefile,
+    this class could be stripped out entirely.
+    """
+
+
+    # regex we're using to determine to autodetect strings.
+    # A few additions we *could* make:
+    #      /\(\) \.
+    # Those would let us match literally every top-level `Name`
+    # attr in Definitions/*.xml, but the extra ones we pull in
+    # are largely dumb (file paths, and one name with a
+    # parenthetical comment in it).  Gonna go ahead and leave
+    # those out, on the theory that they're unlikely to show up
+    # in savefiles.
+    VALID_STRING_RE = re.compile(r'^[-a-zA-Z0-9_]+$')
+
+
+    def __init__(self, savefile, last_pos=None):
+        """
+        Initializes ourself from the specified savefile, optionally stopping
+        at a final position (instead of going until the end of the file).
+        That lets us process, for instance, the PBar offset which lets us
+        skip a pretty huge chunk of the file.
+        """
+        self.savefile = savefile
+        self.data = self.savefile.data
+        self.start_pos = self.savefile.tell()
+        if last_pos is None:
+            self.last_pos = len(self.data)
+        else:
+            self.last_pos = last_pos
+
+        # We're going to break the remaining data up into bit: a
+        # list whose elements will either be `bytes` or `str`.  `bytes`
+        # entries will be written as-is; `str` objects will be handled
+        # as strings.
+        self.categorized = []
+
+        # Start looping
+        self.remaining_cur_pos = self.start_pos
+        self.remaining_prev_pos = self.start_pos
+        while self.remaining_cur_pos < self.last_pos:
+            if not self._check_remaining_string():
+                self.remaining_cur_pos += 1
+
+        # Categorize any data after the last string value
+        if self.remaining_prev_pos < self.last_pos:
+            self.categorized.append(self.data[self.remaining_prev_pos:self.last_pos])
+
+        # ... and seek to the end location
+        self.savefile.seek(self.last_pos)
+
+
+    def _read_remaining_varint(self, pos):
+        """
+        Reads a varint from our remaining data.  This duplicates the logic
+        from `datafile.read_varint`, but that function likes working on
+        a file-like object, whereas this one's operating on a chunk of
+        bytes.  Arguably we could normalize things so that we could use
+        a single function, but we'll cope for now.
+        """
+        iter_count = 0
+        data = 0
+        cur_shift = 0
+        keep_going = True
+        while keep_going:
+            if iter_count >= 4:
+                # If we've gone more than 4 bytes, there's no way
+                # it's a value we care about.
+                return None
+            new_byte = self.data[pos]
+            pos += 1
+            data |= ((new_byte & 0x7F) << cur_shift)
+            if new_byte & 0x80 == 0x80:
+                cur_shift += 7
+            else:
+                keep_going = False
+            iter_count += 1
+        return (data, pos)
+
+
+    def _check_remaining_string(self):
+        """
+        Checks our current position in the remaining data to see if there's
+        a string stored here, either as an initial definition or a reference.
+        Returns `True` if we found a string, and `False` otherwise.  If we
+        did find a string, we will also store any inbetween data in our
+        `categorized` list and advance the current position.
+
+        This duplicates a fair bit of logic from `datafile.read_string`, but
+        needs to do various things differently due to the circumstances of
+        remaining-data processing, so we'll cope for now.
+        """
+        my_pos = self.remaining_cur_pos
+        result = self._read_remaining_varint(my_pos)
+        if result is None:
+            return False
+        strlen, my_pos = result
+        if strlen == 0:
+            return False
+        elif strlen > 255:
+            # Very arbitrary size restriction here, but the maximum name for
+            # top-level elements in Definitions/*.xml, even including the
+            # sillier chars in the regex, is 50.  I'm assuming anything this
+            # big isn't worth checking; it's likely to be a false positive.
+            return False
+        second_val_pos = my_pos
+        result = self._read_remaining_varint(my_pos)
+        if result is None:
+            return False
+        second_val, my_pos = result
+        if second_val == 0:
+            # Potential string; read it in and see
+            string_val = self.data[my_pos:my_pos+strlen]
+            if len(string_val) != strlen:
+                # Probably overflowed past the end of the file?
+                return False
+            string_val = string_val.decode(self.savefile.encoding)
+            if not UnparsedData.VALID_STRING_RE.match(string_val):
+                # Doesn't look like a string!
+                return False
+            if string_val in self.savefile.string_registry_read_seen:
+                # We've already seen this string; that would mean that both are
+                # probably false positives.  Not a big deal, but we'll avoid
+                # storing this duplicate as a string
+                return False
+            # Finally, we're as sure as we can be that this is a valid string.
+            # Even if it's a false positive, we should be safe writing it out as
+            # a string later, since that'll result in the same byte sequence,
+            # and nothing would be referencing it unless there's a *really*
+            # unlucky coincidence.
+            #print(f' <- {string_val}')
+
+            # Store any data from before the string
+            if self.remaining_prev_pos < self.remaining_cur_pos:
+                self.categorized.append(self.data[self.remaining_prev_pos:self.remaining_cur_pos])
+
+            # Store the string
+            self.savefile.string_registry_read[my_pos] = string_val
+            self.savefile.string_registry_read_seen.add(string_val)
+            self.categorized.append(string_val)
+
+            # Update current position
+            self.remaining_cur_pos = my_pos + strlen
+            self.remaining_prev_pos = self.remaining_cur_pos
+            return True
+        else:
+            # Potential string reference; take a peek
+            target_pos = second_val_pos-second_val
+            if target_pos in self.savefile.string_registry_read:
+                destination_string = self.savefile.string_registry_read[target_pos]
+                if len(destination_string) != strlen:
+                    # String lengths don't match; this is a false positive!
+                    return False
+                # Now it's almost assured that we've reached a valid string reference.
+                # Store it!
+                #print(f' -> {destination_string}')
+
+                # Store any data from before the string
+                if self.remaining_prev_pos < self.remaining_cur_pos:
+                    self.categorized.append(self.data[self.remaining_prev_pos:self.remaining_cur_pos])
+
+                # Now store the string
+                self.categorized.append(destination_string)
+
+                # Update current position
+                self.remaining_cur_pos = my_pos
+                self.remaining_prev_pos = self.remaining_cur_pos
+                return True
+            else:
+                return False
+
+
+    def write_to(self, odf):
+        """
+        Write ourselves out to the specified file
+        """
+        for segment in self.categorized:
+            if type(segment) == bytes:
+                odf.write(segment)
+            elif type(segment) == str:
+                odf.write_string(segment)
+            else:
+                raise RuntimeError(f'Unknown segment type in remaining data: {type(segment)}')
+
+
 class Savefile(Datafile):
 
     # Maximum savefile version that we can parse
@@ -1656,30 +1894,33 @@ class Savefile(Datafile):
         # If pbar_offset is zero, we end up skipping right to the PeCo chunks, otherwise
         # we're digging a bit into it.
         if self.pbar_offset > 0:
-            self.pwdt = PWDT(self)
 
-            # No clue what's up with these; there are some patterns to be seen,
-            # but they remain pretty opaque.  Does seem to be twelve bytes quite
-            # consistently, though
-            self.unknown_end_bytes = []
-            for _ in range(12):
-                self.unknown_end_bytes.append(self.read_uint8())
+            # World Data (over-map
+            self.pwdt = WorldData(self)
 
-            # Behavior state, I guess?
-            self.beha = Beha(self)
+            # Then, we have, apparently, always 70 components, composed of
+            # a string followed by an ECTa chunk.  I don't see anything
+            # immediately which seems to provide that number, though I admit
+            # I didn't look long.  We're just skipping these for now, since
+            # pbar_offset lets us skip right over, and I'd otherwise have to
+            # start parsing 70 unique serialization formats.
+            #self.components = []
+            #for _ in range(70):
+            #    component_str = self.df.read_string()
+            #    component = Component(self.df)
+            #    self.components.append((component_str, component))
 
-            # Entities, I think?
-            self.entities = Entities(self)
+            # Now just go ahead and skip the rest of the inbetween
+            # data that our pbar_offset lets us ignore
+            self.skipped_data = UnparsedData(self, self.pbar_start_loc)
+
         else:
             self.pwdt = None
-            self.unknown_end_bytes = None
-            self.beha = None
-            self.entities = None
+            #self.components = None
+            self.skipped_data = None
 
         # Any remaining data at the end that we're not sure of
-        self.remaining_loc = self.tell()
-        self.remaining = self.read()
-        self.finish_remaining_string_registry()
+        self.remaining = UnparsedData(self)
 
         # Sanity check: make sure that, were we to write the file back right now, it
         # remains identical to the input
@@ -1690,6 +1931,7 @@ class Savefile(Datafile):
             with open('debug_out.sav', 'wb') as odf:
                 odf.write(test_data)
             raise RuntimeError('Could not reconstruct an identical savefile, aborting!')
+
 
     def _prep_write_data(self, filename=None):
         if filename is None:
@@ -1755,20 +1997,14 @@ class Savefile(Datafile):
         odf.write_varint(self.pbar_offset)
         if self.pbar_offset > 0:
             self.pwdt.write_to(odf)
-            for value in self.unknown_end_bytes:
-                odf.write_uint8(value)
-            self.beha.write_to(odf)
-            self.entities.write_to(odf)
+            #for component_str, component in self.components:
+            #    odf.write_string(component_str)
+            #    component.write_to(odf)
+            self.skipped_data.write_to(odf)
 
         # Any remaining data at the end that we're not sure of
         #odf.write(self.remaining)
-        for segment in self.remaining_categorized:
-            if type(segment) == bytes:
-                odf.write(segment)
-            elif type(segment) == str:
-                odf.write_string(segment)
-            else:
-                raise RuntimeError(f'Unknown segment type in remaining data: {type(segment)}')
+        self.remaining.write_to(odf)
 
         # Now fix the checksum
         new_checksum = binascii.crc32(odf.getvalue()[9:])
@@ -1815,195 +2051,5 @@ class Savefile(Datafile):
             ])
         if self.unknown_offset > 0:
             my_dict['pwdt'] = self.pwdt.to_json()
-            my_dict['unknown_end_bytes'] = self.unknown_end_bytes
-            my_dict['beha'] = self.beha.to_json()
-            my_dict['entities'] = self.entities.to_json()
         return my_dict
-
-
-    def _read_remaining_varint(self, pos):
-        """
-        Reads a varint from our remaining data.  This duplicates the logic
-        from `datafile.read_varint`, but that function likes working on
-        a file-like object, whereas this one's operating on a chunk of
-        bytes.  Arguably we could normalize things so that we could use
-        a single function, but we'll cope for now.  If I ever get through
-        the whole savefile format, I should be able to strip this out
-        entirely.
-        """
-        iter_count = 0
-        data = 0
-        cur_shift = 0
-        keep_going = True
-        while keep_going:
-            if iter_count >= 4:
-                # If we've gone more than 4 bytes, there's no way
-                # it's a value we care about.
-                return None
-            new_byte = self.data[pos]
-            pos += 1
-            data |= ((new_byte & 0x7F) << cur_shift)
-            if new_byte & 0x80 == 0x80:
-                cur_shift += 7
-            else:
-                keep_going = False
-            iter_count += 1
-        return (data, pos)
-
-
-    def _check_remaining_string(self):
-        """
-        Checks our current position in the remaining data to see if there's
-        a string stored here, either as an initial definition or a reference.
-        Returns `True` if we found a string, and `False` otherwise.  If we
-        did find a string, we will also store any inbetween data in our
-        `remaining_categorized` list and advance the current position.
-
-        This duplicates a fair bit of logic from `datafile.read_string`, but
-        needs to do various things differently due to the circumstances of
-        remaining-data processing, so we'll cope for now.  If I ever get
-        through the whole savefile format, I should be able to strip this
-        out entirely.
-        """
-        my_pos = self.remaining_cur_pos
-        result = self._read_remaining_varint(my_pos)
-        if result is None:
-            return False
-        strlen, my_pos = result
-        if strlen == 0:
-            return False
-        elif strlen > 255:
-            # Very arbitrary size restriction here, but the maximum name for
-            # top-level elements in Definitions/*.xml, even including the
-            # sillier chars in the regex, is 50.  I'm assuming anything this
-            # big isn't worth checking; it's likely to be a false positive.
-            return False
-        second_val_pos = my_pos
-        result = self._read_remaining_varint(my_pos)
-        if result is None:
-            return False
-        second_val, my_pos = result
-        if second_val == 0:
-            # Potential string; read it in and see
-            string_val = self.data[my_pos:my_pos+strlen]
-            if len(string_val) != strlen:
-                # Probably overflowed past the end of the file?
-                return False
-            string_val = string_val.decode(self.encoding)
-            if not self.valid_string_re.match(string_val):
-                # Doesn't look like a string!
-                return False
-            if string_val in self.string_registry_read_seen:
-                # We've already seen this string; that would mean that both are
-                # probably false positives.  Not a big deal, but we'll avoid
-                # storing this duplicate as a string
-                return False
-            # Finally, we're as sure as we can be that this is a valid string.
-            # Even if it's a false positive, we should be safe writing it out as
-            # a string later, since that'll result in the same byte sequence,
-            # and nothing would be referencing it unless there's a *really*
-            # unlucky coincidence.
-            #print(f' <- {string_val}')
-
-            # Store any data from before the string
-            if self.remaining_last_pos < self.remaining_cur_pos:
-                self.remaining_categorized.append(self.data[self.remaining_last_pos:self.remaining_cur_pos])
-
-            # Store the string
-            self.string_registry_read[my_pos] = string_val
-            self.string_registry_read_seen.add(string_val)
-            self.remaining_categorized.append(string_val)
-
-            # Update current position
-            self.remaining_cur_pos = my_pos + strlen
-            self.remaining_last_pos = self.remaining_cur_pos
-            return True
-        else:
-            # Potential string reference; take a peek
-            target_pos = second_val_pos-second_val
-            if target_pos in self.string_registry_read:
-                destination_string = self.string_registry_read[target_pos]
-                if len(destination_string) != strlen:
-                    # String lengths don't match; this is a false positive!
-                    return False
-                # Now it's almost assured that we've reached a valid string reference.
-                # Store it!
-                #print(f' -> {destination_string}')
-
-                # Store any data from before the string
-                if self.remaining_last_pos < self.remaining_cur_pos:
-                    self.remaining_categorized.append(self.data[self.remaining_last_pos:self.remaining_cur_pos])
-
-                # Now store the string
-                self.remaining_categorized.append(destination_string)
-
-                # Update current position
-                self.remaining_cur_pos = my_pos
-                self.remaining_last_pos = self.remaining_cur_pos
-                return True
-            else:
-                return False
-
-
-    def finish_remaining_string_registry(self):
-        """
-        So it's unlikely that I'm going to end up decoding the *entire*
-        savefile, and even if it eventually happens, I am certainly not
-        going to finish that process for some time.  This leaves me with
-        the problem of string references in the "remaining" bit of the
-        save that I haven't processed.  Namely: any edit I make in here
-        which changes the length of the file in any way is almost
-        certainly going to break string references after the edit.  There
-        are string references very near the end of 300kb saves which
-        reference early-save strings, etc.
-
-        So, what to do?  Well: *detecting* string references in the file
-        is actually not a huge problem.  Detecting string definitions is
-        a bit prone to false-positives, but we don't really have to worry
-        about that too much -- a reference will point back to a string
-        we've seen earlier on, and we can match on the strlen for an even
-        stronger match.  The chances of false positives on the reference
-        detection is, IMO, low enough that it's not worth worrying about.
-
-        The plan, then: once I get to the "remaining" data bit, brute-force
-        search the remaining data for more strings and string references,
-        making a list of string references as I go.  Then when we write
-        out the file, instead of just blindly writing out the remaining data,
-        we'll have to go through and update them as-needed.  Kind of a pain,
-        but I think it should be safe to do, and allow this util to be
-        Actually Useful.
-
-        Anyway, this function is the bit which scans the remaining data and
-        finishes filling out our `string_registry_read` dict.  It'll also
-        create a new list of string references so we can reconstruct later.
-        """
-
-        # regex we're using to determine to autodetect strings.
-        # A few additions we *could* make:
-        #      /\(\) \.
-        # Those would let us match literally every top-level `Name`
-        # attr in Definitions/*.xml, but the extra ones we pull in
-        # are largely dumb (file paths, and one name with a
-        # parenthetical comment in it).  Gonna go ahead and leave
-        # those out, on the theory that they're unlikely to show up
-        # in savefiles.
-        self.valid_string_re = re.compile(r'^[-a-zA-Z0-9_]+$')
-
-        # We're going to break the remaining data up into bit: a
-        # list whose elements will either be `bytes` or `str`.  `bytes`
-        # entries will be written as-is; `str` objects will be handled
-        # as strings.
-        self.remaining_categorized = []
-
-        # Start looping
-        self.remaining_cur_pos = self.remaining_loc
-        self.remaining_last_pos = self.remaining_loc
-        while self.remaining_cur_pos < self.data_len:
-            if not self._check_remaining_string():
-                self.remaining_cur_pos += 1
-
-        # Categorize any data after the last string value
-        if self.remaining_last_pos < self.data_len:
-            self.remaining_categorized.append(self.data[self.remaining_last_pos:])
-
 

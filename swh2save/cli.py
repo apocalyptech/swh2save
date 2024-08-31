@@ -782,15 +782,15 @@ def main():
             lines = 5
             printable_chars = b'0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ '
             for line in range(lines):
-                start = line*per_line
-                print('0x{:08X}  '.format(save.remaining_loc+start), end='')
-                for (idx, byte) in enumerate(save.remaining[start:start+per_line]):
+                start = save.remaining.start_pos + (line*per_line)
+                print('0x{:08X}  '.format(start), end='')
+                for (idx, byte) in enumerate(save.data[start:start+per_line]):
                     print('{:02X}'.format(byte), end='')
                     print(' ', end='')
                     if idx % 4 == 3:
                         print(' ', end='')
                 print('| ', end='')
-                for byte in save.remaining[start:start+per_line]:
+                for byte in save.data[start:start+per_line]:
                     if byte in printable_chars:
                         print(chr(byte), end='')
                     else:
