@@ -1946,6 +1946,12 @@ class Savefile(Datafile, Serializable):
             # data that our pbar_offset lets us ignore
             self.skipped_data = UnparsedData(self, self.pbar_start_loc)
 
+            # There seems to be a spare uint8 after the skipped data, which
+            # seems to alway be zero.  Possibly I should just be reading one
+            # more byte than pbar_offset tells me to, but I'd rather just
+            # keep it consistent.
+            self.pre_pbar_zero = self.read_uint8()
+
         else:
             self.pwdt = None
             #self.components = None
@@ -2024,18 +2030,70 @@ class Savefile(Datafile, Serializable):
         # Mission Data
         self.missions.write_to(odf)
 
-        # Offset to get to PBar records, plus some of that otherwise-skipped
-        # data.
-        odf.write_varint(self.pbar_offset)
-        if self.pbar_offset > 0:
+        ###
+        ### PBar offset handling...
+        ###
+
+        # Offset to get to PBar chunks, plus some of that otherwise-skipped
+        # data.  Note that we have to do some weird shenanigans here to ensure
+        # that the values work.  The data in string references in the skipped
+        # section will depend on how many bytes `pbar_offset` takes up, which
+        # can vary since it's a varint.  So we have to first *assume* that
+        # `pbar_offset` will take three bytes, then write out the extra data,
+        # and then compute the actual `pbar_offset` value and check how many
+        # bytes it takes.  If it takes more or less than three, we would need
+        # to re-write the section to accomodate, since those string references
+        # will have changed.
+        #
+        # In the interests of simplicity, for *now* we're basically only
+        # supporting `pbar_offset` values which take three bytes.  The smallest
+        # value I've seen on my savegames is 201474 (82 A6 0C) and the largest
+        # has been 386860 (AC CE 17).  Given that range, I'm doubtful it'll
+        # ever be anything but three bytes (except when it's 0, which is a
+        # special case).
+
+        if self.pbar_offset == 0:
+            # If it's zero, we can skip all this nonsense
+            odf.write_varint(self.pbar_offset)
+
+        else:
+            # Write a "junk" three-byte value
+            pbar_offset_loc = odf.tell()
+            odf.write(b'\x00\x00\x00')
+            skipped_data_start_loc = odf.tell()
+
+            # Write the remaining data
             self.pwdt.write_to(odf)
             #for component_str, component in self.components:
             #    odf.write_string(component_str)
             #    component.write_to(odf)
             self.skipped_data.write_to(odf)
 
+            # Compute the proper pbar_offset
+            skipped_data_end_loc = odf.tell()
+            self.pbar_offset = skipped_data_end_loc - skipped_data_start_loc
+
+            # This bit is absurd.  Anyway, write the varint and check its
+            # length.  Then write the proper value out to its location and seek
+            # back to where we're supposed to be.
+            test_odf = Savefile('foo', do_write=True)
+            test_odf.write_varint(self.pbar_offset)
+            if test_odf.tell() != 3:
+                raise RuntimeError(f'Unsupported pbar_offset data length: {test_odf.tell()}')
+            test_odf.seek(0)
+            odf.seek(pbar_offset_loc)
+            odf.write(test_odf.read())
+            odf.seek(skipped_data_end_loc)
+
+            # Now post-skipped data which still relies on having
+            # a nonzero pbar_offset.
+            odf.write_uint8(self.pre_pbar_zero)
+
+        ###
+        ### Resuming our ordinary processing...
+        ###
+
         # Any remaining data at the end that we're not sure of
-        #odf.write(self.remaining)
         self.remaining.write_to(odf)
 
         # Now fix the checksum
@@ -2084,5 +2142,8 @@ class Savefile(Datafile, Serializable):
         if self.pbar_offset > 0:
             my_dict['pwdt'] = self.pwdt.to_json(verbose)
             my_dict['skipped_data'] = '(omitted)'
+            self._json_simple(my_dict, [
+                'pre_pbar_zero',
+                ])
         return my_dict
 
