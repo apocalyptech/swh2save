@@ -35,6 +35,7 @@ At time of writing, here's the stuff you can edit:
   - Sub Equipment
   - Key Items
   - Hats!
+- Revealing the full map
 
 I may not be the best at keeping this README updated while still in
 development, so it's possible there'll be more stuff by the time you read

@@ -734,7 +734,7 @@ class Inventory(Chunk):
         Adds a new item with the given name to our inventory
         """
         self.last_inventory_id += 1
-        self.items.append(InventORyItem.create_new(self.last_inventory_id, item_name, item_flags))
+        self.items.append(InventoryItem.create_new(self.last_inventory_id, item_name, item_flags))
         if flag_as_new:
             self.new_items.append(self.last_inventory_id)
 
@@ -1102,10 +1102,12 @@ class ShipLocation(Chunk):
         return my_dict
 
 
-class RevealedMapData(Chunk):
+class WorldCloudData(Chunk):
     """
-    `MtBG` chunk.  This holds info about the revealed map; a bit value of
-    1 means that a cloud is present, and 0 means that it's been revealed.
+    `MtBG` chunk.  No clue what MtBG actually stands for.
+
+    This holds info about the revealed map.  A bit value of 1 means
+    that a cloud is present, and 0 means that it's been revealed.
     """
 
     # This is hardcoded here, but possibly it's technically reliant on
@@ -1131,7 +1133,7 @@ class RevealedMapData(Chunk):
         # 10440/290 is 36, fwiw, and 36 bytes is enough to store 270 bit
         # values (can get 288).  So I think that not all of this data is
         # actually used, but it's pretty close
-        self.data = self.df.read(RevealedMapData.MAP_DATA_SIZE)
+        self.data = self.df.read(WorldCloudData.MAP_DATA_SIZE)
 
 
     def _write_to(self, odf):
@@ -1144,11 +1146,11 @@ class RevealedMapData(Chunk):
 
 
     def reveal(self):
-        self.data = b'\x00'*RevealedMapData.MAP_DATA_SIZE
+        self.data = b'\x00'*WorldCloudData.MAP_DATA_SIZE
 
 
     def hide(self):
-        self.data = b'\xFF'*RevealedMapData.MAP_DATA_SIZE
+        self.data = b'\xFF'*WorldCloudData.MAP_DATA_SIZE
 
 
     def _to_json(self, verbose=False):
@@ -1311,17 +1313,17 @@ class WorldData(Chunk):
         # Seems to always be one?
         self.unknown_one = self.df.read_uint8()
 
-        # Revealed map data
-        self.revealed_map_data = []
-        num_revealed_map_data = self.df.read_varint()
-        for _ in range(num_revealed_map_data):
-            self.revealed_map_data.append(RevealedMapData(self.df))
+        # Cloud Data
+        self.cloud_data = []
+        num_cloud_data = self.df.read_varint()
+        for _ in range(num_cloud_data):
+            self.cloud_data.append(WorldCloudData(self.df))
 
         # I'm pretty sure that the stuff below belongs here in the PWDT
         # chunk, since the "behaviors" seem to just be for overworld
         # enemies, and the Entities processing seems to be similarly map-
         # related.  We don't actually *care* about anything beyond the
-        # revealed map data, for save-editor purposes, and once we're
+        # cloud map data, for save-editor purposes, and once we're
         # through with this chunk, the main processing ends up skipping
         # a bunch.  So we could probably comment the rest of this file
         # and be fine.  Still, since I've already mapped it out, it may
@@ -1344,7 +1346,7 @@ class WorldData(Chunk):
             self.unknown_end_bytes.append(self.df.read_uint8())
 
         # Behavior state
-        self.beha = BehaviorState(self.df)
+        self.behavior_state = BehaviorState(self.df)
 
         # World Map Entities
         self.entities = Entities(self.df)
@@ -1353,15 +1355,15 @@ class WorldData(Chunk):
     def _write_to(self, odf):
 
         odf.write_uint8(self.unknown_one)
-        odf.write_varint(len(self.revealed_map_data))
-        for data in self.revealed_map_data:
+        odf.write_varint(len(self.cloud_data))
+        for data in self.cloud_data:
             data.write_to(odf)
         odf.write_varint(len(self.unknown_entity_ids))
         for entity_id in self.unknown_entity_ids:
             odf.write_varint(entity_id)
         for value in self.unknown_end_bytes:
             odf.write_uint8(value)
-        self.beha.write_to(odf)
+        self.behavior_state.write_to(odf)
         self.entities.write_to(odf)
 
 
@@ -1371,7 +1373,7 @@ class WorldData(Chunk):
             'unknown_one',
             ])
         self._json_object_arr(my_dict, [
-            'revealed_map_data',
+            'cloud_data',
             ], verbose)
         # Munging a bit...
         if verbose:
@@ -1384,10 +1386,20 @@ class WorldData(Chunk):
             'unknown_end_bytes',
             ])
         self._json_object_single(my_dict, [
-            'beha',
+            'behavior_state',
             'entities',
             ], verbose)
         return my_dict
+
+
+    def reveal(self):
+        for data in self.cloud_data:
+            data.reveal()
+
+
+    def hide(self):
+        for data in self.cloud_data:
+            data.hide()
 
 
 # Commenting this for now.  As mentioned in the docstring, I suspect that
@@ -1927,8 +1939,8 @@ class Savefile(Datafile, Serializable):
         # we're digging a bit into it.
         if self.pbar_offset > 0:
 
-            # World Data (over-map
-            self.pwdt = WorldData(self)
+            # World Data
+            self.world_data = WorldData(self)
 
             # Then, we have, apparently, always 70 components, composed of
             # a string followed by an ECTa chunk.  I don't see anything
@@ -1953,7 +1965,7 @@ class Savefile(Datafile, Serializable):
             self.pre_pbar_zero = self.read_uint8()
 
         else:
-            self.pwdt = None
+            self.world_data = None
             #self.components = None
             self.skipped_data = None
 
@@ -2063,7 +2075,7 @@ class Savefile(Datafile, Serializable):
             skipped_data_start_loc = odf.tell()
 
             # Write the remaining data
-            self.pwdt.write_to(odf)
+            self.world_data.write_to(odf)
             #for component_str, component in self.components:
             #    odf.write_string(component_str)
             #    component.write_to(odf)
@@ -2140,7 +2152,7 @@ class Savefile(Datafile, Serializable):
             'pbar_offset',
             ])
         if self.pbar_offset > 0:
-            my_dict['pwdt'] = self.pwdt.to_json(verbose)
+            my_dict['world_data'] = self.world_data.to_json(verbose)
             my_dict['skipped_data'] = '(omitted)'
             self._json_simple(my_dict, [
                 'pre_pbar_zero',

@@ -466,6 +466,18 @@ def main():
             help="When adding new items/hats, don't mark them as 'new'",
             )
 
+    map_group = parser.add_mutually_exclusive_group()
+
+    map_group.add_argument('--reveal-map',
+            action='store_true',
+            help='Fully reveals the world map (removes all clouds)',
+            )
+
+    map_group.add_argument('--hide-map',
+            action='store_true',
+            help='Fully hides the world map (respawns clouds)',
+            )
+
     parser.add_argument('filename',
             type=str,
             nargs=1,
@@ -1152,6 +1164,28 @@ def main():
             for item in to_give:
                 save.inventory.add_item(item, InventoryItem.ItemFlag.UTILITY, flag_as_new=args.set_new_item)
             do_save = True
+
+        # Reveal map
+        if args.reveal_map:
+            if save.world_data:
+                print('- Fully revealing world map')
+                save.world_data.reveal()
+                do_save = True
+            else:
+                print('- NOTICE: This savegame has not populated any world data yet, so no')
+                print('  map reveal is being performed.  Make sure the save has visited')
+                print('  the world map at least once.')
+
+        # Hide map
+        if args.hide_map:
+            if save.world_data:
+                print('- Fully hiding world map')
+                save.world_data.hide()
+                do_save = True
+            else:
+                print('- NOTICE: This savegame has not populated any world data yet, so no')
+                print('  map hiding is being performed.  Make sure the save has visited')
+                print('  the world map at least once.')
 
         # Save out, assuming we did anything
         if do_save:
