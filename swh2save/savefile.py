@@ -2063,6 +2063,14 @@ class Savefile(Datafile, Serializable):
         # has been 386860 (AC CE 17).  Given that range, I'm doubtful it'll
         # ever be anything but three bytes (except when it's 0, which is a
         # special case).
+        #
+        # TODO: Despite believing that `pbar_offset` will basically always
+        # consume three bytes, I *would* like to support the writing of this
+        # section more properly.  Start at a low byte assumption (1 seems
+        # a bit pointless, but we could do 2), do the write, and if it fails,
+        # increase and continue.  We'd have to make sure to snapshot+restore
+        # the string ref tracker var(s?) along with the file state itself,
+        # since new strings could get defined inside the unparsed area.
 
         if self.pbar_offset == 0:
             # If it's zero, we can skip all this nonsense
