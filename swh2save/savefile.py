@@ -1120,6 +1120,7 @@ class RevealedMapData(Chunk):
             'size_x',
             'size_y',
             ])
+        # Munging a bit...
         my_dict['data'] = '(omitted)'
         return my_dict
 
@@ -1174,10 +1175,10 @@ class PWDT(Chunk):
             'revealed_map_data',
             ])
         # Munging a bit...
-        my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
-        #self._json_simple(my_dict, [
-        #    'unknown_entity_ids',
-        #    ])
+        #my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
+        self._json_simple(my_dict, [
+            'unknown_entity_ids',
+            ])
         return my_dict
 
 
@@ -1279,7 +1280,9 @@ class Component(Chunk):
 
 class Entities(Chunk):
     """
-    `ECSD` chunk.  I think this is defining entities on the map
+    `ECSD` chunk.  I think this is defining entities on the map.
+    The "wm_*" prefix on the entity names found in here almost certainly
+    imply "world map."
     """
 
     def __init__(self, df):
@@ -1336,13 +1339,13 @@ class Entities(Chunk):
             'zero',
             ])
         my_dict['entities'] = []
-        # Munging a bit
-        my_dict['num_entities'] = len(self.entities)
-        #for value, name in self.entities:
-        #    my_dict['entities'].append({
-        #        'value': value,
-        #        'name': name,
-        #        })
+        # Munging a bit...
+        #my_dict['num_entities'] = len(self.entities)
+        for value, name in self.entities:
+            my_dict['entities'].append({
+                'value': value,
+                'name': name,
+                })
         self._json_simple(my_dict, [
             'unknown_1',
             'unknown_2',
@@ -1441,129 +1444,6 @@ class MissionData(Chunk):
         for _ in range(num_unknown_strings):
             self.unknown_strings.append(self.df.read_string())
 
-        # Debugging...
-        if False:
-            print('  ' + ' | '.join([str(i) for i in [
-                self.flag,
-                self.location,
-                self.another_location,
-                self.unknown_1,
-                self.unknown_2,
-                self.unknown_3,
-                self.unknown_4,
-                #','.join(self.active_crew),
-                self.unknown_5,
-                self.unknown_6,
-                self.unknown_same_1,
-                self.unknown_same_2,
-                self.unknown_zeroes_1,
-                self.unknown_zeroes_2,
-                self.unknown_zeroes_3,
-                self.unknown_zeroes_4,
-                self.unknown_zeroes_5,
-                self.unknown_7,
-                self.unknown_zeroes_6,
-                self.unknown_eight_bytes,
-                self.unknown_zeroes_7,
-                self.unknown_zeroes_8,
-                self.unknown_zeroes_9,
-                self.unknown_strings,
-                ]]))
-
-        # Then a varint of some sort.  This feels like it's *got* to be an
-        # offset of some sort; it very nearly points to a section with the only
-        # LuaW chunk (with some associated PBar chunks, and PeCo), and shortly
-        # thereafter is some Pers chunks (which is where I think XP + skills are).
-        # It's *so close!*  I can't quite figure out exactly how to interpret it,
-        # though.  Also: I feel like there are some edge cases with setting this
-        # up; you'd need to take into account any strings stored in the inner
-        # data, and depending on how that plays out, the byte length could change,
-        # which could theoretically cause this varint to change length, which
-        # would then need to trigger the inner string references to change yet
-        # again, etc...
-        #
-        # Still, it seems quite regular.  On the first 19 of the saves I collected,
-        # if you move backwards three bytes from the start of the varint and then
-        # add this offset, you end up directly at the LuaW chunk.  But then at
-        # the 20th save, you start having to go backwards more than three bytes.
-        # Though the distance stays constant for awhile, before having another
-        # similar jump.  So: weird.
-        #
-        # I'm a bit worried that we'll end up needing to know how to update this
-        # value properly, but time will tell.
-        self.unknown_offset = self.df.read_varint()
-
-        # Some debugging attempts...
-        #cur_pos = self.df.tell()
-        #import os
-        #self.df.seek(self.unknown_offset-6, os.SEEK_CUR)
-        #new_pos = self.df.tell()
-        #data = self.df.read(4)
-        #self.df.seek(cur_pos)
-        #print('0x{:X} + 0x{:X} -> 0x{:X}: {}'.format(
-        #    cur_pos,
-        #    self.unknown_offset,
-        #    new_pos,
-        #    data,
-        #    ))
-
-        # Yet more debugging
-        if False:
-            cur_pos = self.df.tell()
-            theoretical_target = cur_pos+self.unknown_offset
-            start_test = cur_pos + self.unknown_offset - 512
-            self.df.seek(start_test)
-            remaining_data = self.df.read()
-            interested = {
-                    b'LuaW': None,
-                    b'PeCo': None,
-                    }
-            cur_idx = 0
-            for cur_idx in range(0, len(remaining_data)-4):
-                test_chunk = remaining_data[cur_idx:cur_idx+4]
-                if test_chunk in interested:
-                    interested[test_chunk] = start_test + cur_idx
-                    if all([v is not None for v in interested.values()]):
-                        break
-            if any([v is None for v in interested.values()]):
-                print("  (skipping, don't have the full dataset)")
-            else:
-                print('  -> 0x{:X} - '.format(theoretical_target) + ', '.join([
-                    '{} (0x{:X}): {}'.format(
-                            k.decode('latin1'),
-                            v,
-                            v-theoretical_target,
-                        ) for k,v in interested.items()
-                    ]))
-            print('')
-            self.df.seek(cur_pos)
-
-        # Well, regardless of how exactly to interpret that offset, it seems that
-        # if it's 0 we skip a bunch of processing, but otherwise we have some
-        # more chunks to read in.
-        # TODO: I kind of suspect that our offset, plus all this processing, belongs
-        # out in the "main" area instead of nested inside the MsnD chunk.
-        if self.unknown_offset > 0:
-            self.pwdt = PWDT(self.df)
-
-            # No clue what's up with these; there are some patterns to be seen,
-            # but they remain pretty opaque.  Does seem to be twelve bytes quite
-            # consistently, though
-            self.unknown_end_bytes = []
-            for _ in range(12):
-                self.unknown_end_bytes.append(self.df.read_uint8())
-
-            # Behavior state, I guess?
-            self.beha = Beha(self.df)
-
-            # Entities, I think?
-            self.entities = Entities(self.df)
-        else:
-            self.pwdt = None
-            self.unknown_end_bytes = None
-            self.beha = None
-            self.entities = None
-
 
     def _write_to(self, odf):
 
@@ -1610,15 +1490,6 @@ class MissionData(Chunk):
         for string in self.unknown_strings:
             odf.write_string(string)
 
-        odf.write_varint(self.unknown_offset)
-
-        if self.unknown_offset > 0:
-            self.pwdt.write_to(odf)
-            for value in self.unknown_end_bytes:
-                odf.write_uint8(value)
-            self.beha.write_to(odf)
-            self.entities.write_to(odf)
-
 
     def _to_json(self):
         my_dict = {}
@@ -1659,13 +1530,7 @@ class MissionData(Chunk):
             'unknown_zeroes_8',
             'unknown_zeroes_9',
             'unknown_strings',
-            'unknown_offset',
             ])
-        if self.unknown_offset > 0:
-            my_dict['pwdt'] = self.pwdt.to_json()
-            my_dict['unknown_end_bytes'] = self.unknown_end_bytes
-            my_dict['beha'] = self.beha.to_json()
-            my_dict['entities'] = self.entities.to_json()
         return my_dict
 
 
@@ -1781,6 +1646,36 @@ class Savefile(Datafile):
         # Mission Data
         self.missions = MissionData(self)
 
+        # This varint contains an offset which can be used to skip to the PBar
+        # array near the end of the file.  This skips over the map data, behavior
+        # states, world-map entities, a whole series of Component dumps which take
+        # up more than 50% of the file, and Lua variable state.
+        self.pbar_offset = self.read_varint()
+        self.pbar_start_loc = self.tell() + self.pbar_offset
+
+        # If pbar_offset is zero, we end up skipping right to the PeCo chunks, otherwise
+        # we're digging a bit into it.
+        if self.pbar_offset > 0:
+            self.pwdt = PWDT(self)
+
+            # No clue what's up with these; there are some patterns to be seen,
+            # but they remain pretty opaque.  Does seem to be twelve bytes quite
+            # consistently, though
+            self.unknown_end_bytes = []
+            for _ in range(12):
+                self.unknown_end_bytes.append(self.read_uint8())
+
+            # Behavior state, I guess?
+            self.beha = Beha(self)
+
+            # Entities, I think?
+            self.entities = Entities(self)
+        else:
+            self.pwdt = None
+            self.unknown_end_bytes = None
+            self.beha = None
+            self.entities = None
+
         # Any remaining data at the end that we're not sure of
         self.remaining_loc = self.tell()
         self.remaining = self.read()
@@ -1855,6 +1750,16 @@ class Savefile(Datafile):
         # Mission Data
         self.missions.write_to(odf)
 
+        # Offset to get to PBar records, plus some of that otherwise-skipped
+        # data.
+        odf.write_varint(self.pbar_offset)
+        if self.pbar_offset > 0:
+            self.pwdt.write_to(odf)
+            for value in self.unknown_end_bytes:
+                odf.write_uint8(value)
+            self.beha.write_to(odf)
+            self.entities.write_to(odf)
+
         # Any remaining data at the end that we're not sure of
         #odf.write(self.remaining)
         for segment in self.remaining_categorized:
@@ -1905,7 +1810,14 @@ class Savefile(Datafile):
             'ship_location',
             'missions',
             ])
-
+        self._json_simple(my_dict, [
+            'pbar_offset',
+            ])
+        if self.unknown_offset > 0:
+            my_dict['pwdt'] = self.pwdt.to_json()
+            my_dict['unknown_end_bytes'] = self.unknown_end_bytes
+            my_dict['beha'] = self.beha.to_json()
+            my_dict['entities'] = self.entities.to_json()
         return my_dict
 
 
