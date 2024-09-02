@@ -1762,6 +1762,152 @@ class Shops(Serializable):
         return my_list
 
 
+class JobStatus:
+    """
+    Just a bit of encapsulation of job data for our crew.
+    """
+
+    def __init__(self, name):
+        self.name = name
+        self.level = None
+        self.xp = None
+
+
+class CrewStatus(Chunk):
+    """
+    `Pers` chunk.  SWH2's data implies this is "Persona."  I like "Crew"
+    better, though.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'Pers')
+
+        # Unknown value.  Seems to usually be 2?
+        self.unknown_start = self.df.read_uint8()
+
+        self.name = self.df.read_string()
+
+        # Presumably a varint, but how could we have more than 6?  Just
+        # using a u8.  :D
+        self.jobs = {}
+        num_jobs = self.df.read_uint8()
+        for _ in range(num_jobs):
+            job_name = self.df.read_string()
+            job = JobStatus(job_name)
+            job.level = self.df.read_uint32()
+            self.jobs[job_name] = job
+
+        # Just trusting that the data is properly-written here.  This
+        # could KeyError if not.
+        num_jobs = self.df.read_uint8()
+        for _ in range(num_jobs):
+            job_name = self.df.read_string()
+            self.jobs[job_name].xp = self.df.read_uint32()
+
+        self.cog_selections = []
+        num_cog_selections = self.df.read_varint()
+        for _ in range(num_cog_selections):
+            self.cog_selections.append(self.df.read_string())
+
+        self.reserve_xp = self.df.read_uint32()
+        self.unknown = self.df.read_uint32()
+        self.personal_upgrade_count = self.df.read_uint32()
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.unknown_start)
+        odf.write_string(self.name)
+        odf.write_uint8(len(self.jobs))
+        for job in self.jobs.values():
+            odf.write_string(job.name)
+            odf.write_uint32(job.level)
+        odf.write_uint8(len(self.jobs))
+        for job in self.jobs.values():
+            odf.write_string(job.name)
+            odf.write_uint32(job.xp)
+        odf.write_varint(len(self.cog_selections))
+        for selection in self.cog_selections:
+            odf.write_string(selection)
+        odf.write_uint32(self.reserve_xp)
+        odf.write_uint32(self.unknown)
+        odf.write_uint32(self.personal_upgrade_count)
+
+
+    def _to_json(self, verbose=False):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'unknown_start',
+            'name',
+            ])
+        jobs = []
+        for job in self.jobs.values():
+            jobs.append({
+                'name': job.name,
+                'level': job.level,
+                'xp': job.xp,
+                })
+        my_dict['jobs'] = jobs
+        self._json_simple(my_dict, [
+            'cog_selections',
+            'reserve_xp',
+            'unknown',
+            'personal_upgrade_count',
+            ])
+        return my_dict
+
+
+class CrewController(Chunk):
+    """
+    `PeCo` chunk.  Contains a bunch of `Pers` chunks, which for SWH2 presumably
+    means "Persona" given the game data names.  So I expect that "PeCo" means
+    something like "Persona Controller" or whatever.  I'm using "Crew" instead
+    'cause it's fewer chars and I like the sound better.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'PeCo')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.crew = {}
+        num_crew = self.df.read_varint()
+        for _ in range(num_crew):
+            crew_name = self.df.read_string()
+            self.crew[crew_name] = CrewStatus(self.df)
+
+
+    def __iter__(self):
+        return iter(self.crew.values())
+
+
+    def __len__(self):
+        return len(self.crew)
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_varint(len(self.crew))
+        for crew_name, crew in self.crew.items():
+            odf.write_string(crew_name)
+            crew.write_to(odf)
+
+
+    def _to_json(self, verbose=False):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            ])
+        crew_dict = {}
+        for crew_name, crew in self.crew.items():
+            crew_dict[crew_name] = crew.to_json(verbose)
+        my_dict['crew'] = crew_dict
+        return my_dict
+
+
 class UnparsedData:
     """
     So it's unlikely that I'm going to end up decoding the *entire*
@@ -2033,10 +2179,10 @@ class Savefile(Datafile, Serializable):
         # just putting here for now, which makes it outside a chunk so that's
         # probably not right.  The list does seem to generally be in a
         # different order than the one in the header.
-        self.crew = []
-        num_crew = self.read_uint8()
-        for _ in range(num_crew):
-            self.crew.append(self.read_string())
+        self.crew_list = []
+        num_crew_list = self.read_uint8()
+        for _ in range(num_crew_list):
+            self.crew_list.append(self.read_string())
 
         # And then another, shorter crew list.  Weird
         self.crew_subset = []
@@ -2133,6 +2279,9 @@ class Savefile(Datafile, Serializable):
             self.skipped_unknown_zero_1 = self.read_uint8()
             self.skipped_unknown_zero_2 = self.read_uint8()
 
+        # Crew status!
+        self.crew = CrewController(self)
+
         # Any remaining data at the end that we're not sure of
         self.remaining = UnparsedData(self)
 
@@ -2177,8 +2326,8 @@ class Savefile(Datafile, Serializable):
         self.inventory.write_to(odf)
 
         # Crew list, again?
-        odf.write_uint8(len(self.crew))
-        for crew in self.crew:
+        odf.write_uint8(len(self.crew_list))
+        for crew in self.crew_list:
             odf.write_string(crew)
 
         # Crew subset
@@ -2288,6 +2437,9 @@ class Savefile(Datafile, Serializable):
         ### Resuming our ordinary processing...
         ###
 
+        # Crew status
+        self.crew.write_to(odf)
+
         # Any remaining data at the end that we're not sure of
         self.remaining.write_to(odf)
 
@@ -2318,7 +2470,7 @@ class Savefile(Datafile, Serializable):
             'inventory',
             ], verbose)
         self._json_simple(my_dict, [
-            'crew',
+            'crew_list',
             'crew_subset',
             ])
         if self.rede is not None:
@@ -2348,5 +2500,8 @@ class Savefile(Datafile, Serializable):
             self._json_object_arr(my_dict, [
                 'shops',
                 ], verbose)
+        self._json_object_single(my_dict, [
+            'crew',
+            ])
         return my_dict
 
