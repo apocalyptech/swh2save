@@ -1617,6 +1617,151 @@ class MissionData(Chunk):
         return my_dict
 
 
+class ShopData(Chunk):
+    """
+    `PBar` chunk.  This stores information about a shop/bar's status, which
+    apparently means a list of available crew-for-hire, and a list of
+    items the player has bought from the store (to determine if the item
+    should remain for sale or not).
+    """
+
+    def __init__(self, df, name):
+        super().__init__(df, 'PBar')
+        self.name = name
+
+        # Couple of unknown values
+        self.unknown_begin_1 = self.df.read_uint8()
+        self.unknown_begin_2 = self.df.read_uint8()
+
+        # Available crew
+        self.available_crew = []
+        self.crew_unknown_zero = 0
+        # This appears to just be a flag.  Should only ever be 0 or 1
+        # but we're saving the value just in case
+        self.has_crew = self.df.read_uint8()
+        if self.has_crew > 0:
+            self.crew_unknown_zero = self.df.read_uint8()
+            num_crew = self.df.read_varint()
+            for _ in range(num_crew):
+                self.available_crew.append(self.df.read_string())
+
+        # Now purchased items
+        self.purchased_items = []
+        num_purchased_items = self.df.read_varint()
+        for _ in range(num_purchased_items):
+            item = self.df.read_string()
+            # I bet this is actually a varint and then three bytes of
+            # unknown data, actually...
+            qty = self.df.read_uint32()
+            self.purchased_items.append((item, qty))
+
+        # Then an unknown
+        self.unknown_end = self.df.read_uint32()
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.unknown_begin_1)
+        odf.write_uint8(self.unknown_begin_2)
+
+        # Crew
+        if len(self.available_crew) == 0:
+            odf.write_uint8(0)
+        else:
+            odf.write_uint8(self.has_crew)
+            odf.write_uint8(self.crew_unknown_zero)
+            odf.write_varint(len(self.available_crew))
+            for crew in self.available_crew:
+                odf.write_string(crew)
+
+        # Purchased Items
+        odf.write_varint(len(self.purchased_items))
+        for item, qty in self.purchased_items:
+            odf.write_string(item)
+            odf.write_uint32(qty)
+
+        # Final unknown
+        odf.write_uint32(self.unknown_end)
+
+
+    def _to_json(self, verbose=False):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'name',
+            'unknown_begin_1',
+            'unknown_begin_2',
+            ])
+        crew_section = {}
+        crew_section['has_crew'] = self.has_crew
+        if len(self.available_crew) > 0:
+            self._json_simple(crew_section, [
+                'crew_unknown_zero',
+                'available_crew',
+                ])
+        my_dict['crew_section'] = crew_section
+        item_section = []
+        for item, qty in self.purchased_items:
+            item_section.append({
+                'item': item,
+                'qty': qty,
+                })
+        my_dict['purchased_items'] = item_section
+        self._json_simple(my_dict, [
+            'unknown_end',
+            ])
+        return my_dict
+
+
+class Shops(Serializable):
+    """
+    Object to encapsulate a collection of PBar objects which store information
+    about bar/shop stocks.  This is fudging a few things because it's not an
+    actual chunk type, but we want the object to tie into our usual mechanisms.
+
+    I'm wrapping this up in an object mostly so that I can support clearing
+    out "available" crew from shops if I manage to support unlocking crew via
+    the save editor.
+    """
+
+    def __init__(self, df):
+        self.df = df
+
+        # Using a dict and relying on Python's remembered dictionary-insertion
+        # ordering.
+        self.shops = {}
+
+        num_shops = self.df.read_varint()
+        for _ in range(num_shops):
+            shop_name = self.df.read_string()
+            self.shops[shop_name] = ShopData(self.df, shop_name)
+
+
+    def __iter__(self):
+        return iter(self.shops.values())
+
+
+    def __len__(self):
+        return len(self.shops)
+
+
+    def write_to(self, odf):
+        """
+        Note the lack of underscore; this object doesn't inherit from Chunk, so
+        our usual encapsulation doesn't happen
+        """
+        odf.write_varint(len(self.shops))
+        for shop in self.shops.values():
+            odf.write_string(shop.name)
+            shop.write_to(odf)
+
+
+    def _to_json(self, verbose=False):
+        my_list = []
+        for shop in self.shops.values():
+            my_list.append(shop.to_json(verbose))
+        return my_list
+
+
 class UnparsedData:
     """
     So it's unlikely that I'm going to end up decoding the *entire*
@@ -1766,7 +1911,7 @@ class UnparsedData:
             if not UnparsedData.VALID_STRING_RE.match(string_val):
                 # Doesn't look like a string!
                 return False
-            if string_val in self.savefile.string_registry_read_seen:
+            if string_val in self.savefile.sr.read_strings_seen:
                 # We've already seen this string; that would mean that both are
                 # probably false positives.  Not a big deal, but we'll avoid
                 # storing this duplicate as a string
@@ -1783,8 +1928,8 @@ class UnparsedData:
                 self.categorized.append(self.data[self.remaining_prev_pos:self.remaining_cur_pos])
 
             # Store the string
-            self.savefile.string_registry_read[my_pos] = string_val
-            self.savefile.string_registry_read_seen.add(string_val)
+            self.savefile.sr.read_lookup[my_pos] = string_val
+            self.savefile.sr.read_strings_seen.add(string_val)
             self.categorized.append(string_val)
 
             # Update current position
@@ -1794,8 +1939,8 @@ class UnparsedData:
         else:
             # Potential string reference; take a peek
             target_pos = second_val_pos-second_val
-            if target_pos in self.savefile.string_registry_read:
-                destination_string = self.savefile.string_registry_read[target_pos]
+            if target_pos in self.savefile.sr.read_lookup:
+                destination_string = self.savefile.sr.read_lookup[target_pos]
                 if len(destination_string) != strlen:
                     # String lengths don't match; this is a false positive!
                     return False
@@ -1939,6 +2084,9 @@ class Savefile(Datafile, Serializable):
         # we're digging a bit into it.
         if self.pbar_offset > 0:
 
+            # The skippable section uses a totally isolated string registry
+            self.set_skipped_string_registry()
+
             # World Data
             self.world_data = WorldData(self)
 
@@ -1958,11 +2106,17 @@ class Savefile(Datafile, Serializable):
             # data that our pbar_offset lets us ignore
             self.skipped_data = UnparsedData(self, self.pbar_start_loc)
 
+            # Flip back to the default string registry
+            self.set_default_string_registry()
+
             # There seems to be a spare uint8 after the skipped data, which
             # seems to alway be zero.  Possibly I should just be reading one
             # more byte than pbar_offset tells me to, but I'd rather just
             # keep it consistent.
             self.pre_pbar_zero = self.read_uint8()
+
+            # Shop Status
+            self.shops = Shops(self)
 
         else:
             self.world_data = None
@@ -2047,30 +2201,30 @@ class Savefile(Datafile, Serializable):
         ###
 
         # Offset to get to PBar chunks, plus some of that otherwise-skipped
-        # data.  Note that we have to do some weird shenanigans here to ensure
-        # that the values work.  The data in string references in the skipped
-        # section will depend on how many bytes `pbar_offset` takes up, which
-        # can vary since it's a varint.  So we have to first *assume* that
-        # `pbar_offset` will take three bytes, then write out the extra data,
-        # and then compute the actual `pbar_offset` value and check how many
-        # bytes it takes.  If it takes more or less than three, we would need
-        # to re-write the section to accomodate, since those string references
-        # will have changed.
+        # data.  Note that the skippable section handles its strings totally
+        # separately from the rest of the file.  If a string was used earlier
+        # on, its use in this skippable section will cause it to be written
+        # out again, and string references will *never* go beyond the beginning
+        # of the skippable section.  Likewise, any string references *after*
+        # that point can't point inside the skippable area.
         #
-        # In the interests of simplicity, for *now* we're basically only
-        # supporting `pbar_offset` values which take three bytes.  The smallest
-        # value I've seen on my savegames is 201474 (82 A6 0C) and the largest
-        # has been 386860 (AC CE 17).  Given that range, I'm doubtful it'll
-        # ever be anything but three bytes (except when it's 0, which is a
-        # special case).
+        # We're basically assuming in here that the data length of the skippable
+        # section is three bytes.  The smallest value I've seen on my savegames is
+        # 201474 (82 A6 0C) and the largest has been 386860 (AC CE 17).  Given that
+        # range, I'm doubtful it'll ever be anything but three bytes (except when
+        # it's 0, which is a special case).
         #
-        # TODO: Despite believing that `pbar_offset` will basically always
-        # consume three bytes, I *would* like to support the writing of this
-        # section more properly.  Start at a low byte assumption (1 seems
-        # a bit pointless, but we could do 2), do the write, and if it fails,
-        # increase and continue.  We'd have to make sure to snapshot+restore
-        # the string ref tracker var(s?) along with the file state itself,
-        # since new strings could get defined inside the unparsed area.
+        # TODO: Just write out the skippable section separately, compute the
+        # length, and write them both directly, without having to assume that
+        # `pbar_offset` is 3 bytes.
+        #
+        # (The main reason that's not already done is I hadn't realized at first
+        # that the string handling is totally separate in here, so I thought there
+        # was technically the potential for cascading length changes if the data
+        # hit specific edge cases.  I'd been meaning to expand this to iteratively
+        # go through the possibilities, and had just hardcoded the three-bytes
+        # version first 'cause that was temporarily easiest.  Since the strings
+        # *are* totally isolated, though, it's rather silly.)
 
         if self.pbar_offset == 0:
             # If it's zero, we can skip all this nonsense
@@ -2082,12 +2236,18 @@ class Savefile(Datafile, Serializable):
             odf.write(b'\x00\x00\x00')
             skipped_data_start_loc = odf.tell()
 
+            # Data that we can skip uses completely isolated string handling
+            odf.set_skipped_string_registry()
+
             # Write the remaining data
             self.world_data.write_to(odf)
             #for component_str, component in self.components:
             #    odf.write_string(component_str)
             #    component.write_to(odf)
             self.skipped_data.write_to(odf)
+
+            # Flip back to the default string registry
+            odf.set_default_string_registry()
 
             # Compute the proper pbar_offset
             skipped_data_end_loc = odf.tell()
@@ -2108,6 +2268,9 @@ class Savefile(Datafile, Serializable):
             # Now post-skipped data which still relies on having
             # a nonzero pbar_offset.
             odf.write_uint8(self.pre_pbar_zero)
+
+            # Shop Status
+            self.shops.write_to(odf)
 
         ###
         ### Resuming our ordinary processing...
@@ -2165,5 +2328,8 @@ class Savefile(Datafile, Serializable):
             self._json_simple(my_dict, [
                 'pre_pbar_zero',
                 ])
+            self._json_object_arr(my_dict, [
+                'shops',
+                ], verbose)
         return my_dict
 
