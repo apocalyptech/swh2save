@@ -2084,10 +2084,16 @@ class Savefile(Datafile, Serializable):
         # we're digging a bit into it.
         if self.pbar_offset > 0:
 
+            # A few values we only have with a zero offset
+            self.skipped_unknown_zero_1 = None
+            self.skipped_unknown_zero_2 = None
+
             # The skippable section uses a totally isolated string registry
             self.set_skipped_string_registry()
 
             # World Data
+            # TODO: I actually kind of suspect that *all* the data in this if statement
+            # belongs inside WorldData.  Hrm.
             self.world_data = WorldData(self)
 
             # Then, we have, apparently, always 70 components, composed of
@@ -2122,6 +2128,10 @@ class Savefile(Datafile, Serializable):
             self.world_data = None
             #self.components = None
             self.skipped_data = None
+
+            # We'll have a couple of null bytes here.
+            self.skipped_unknown_zero_1 = self.read_uint8()
+            self.skipped_unknown_zero_2 = self.read_uint8()
 
         # Any remaining data at the end that we're not sure of
         self.remaining = UnparsedData(self)
@@ -2229,6 +2239,8 @@ class Savefile(Datafile, Serializable):
         if self.pbar_offset == 0:
             # If it's zero, we can skip all this nonsense
             odf.write_varint(self.pbar_offset)
+            odf.write_uint8(self.skipped_unknown_zero_1)
+            odf.write_uint8(self.skipped_unknown_zero_2)
 
         else:
             # Write a "junk" three-byte value
@@ -2322,7 +2334,12 @@ class Savefile(Datafile, Serializable):
         self._json_simple(my_dict, [
             'pbar_offset',
             ])
-        if self.pbar_offset > 0:
+        if self.pbar_offset == 0:
+            self._json_simple(my_dict, [
+                'skipped_unknown_zero_1',
+                'skipped_unknown_zero_2',
+                ])
+        else:
             my_dict['world_data'] = self.world_data.to_json(verbose)
             my_dict['skipped_data'] = '(omitted)'
             self._json_simple(my_dict, [
