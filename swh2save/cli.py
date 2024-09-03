@@ -392,6 +392,11 @@ def main():
                 """,
             )
 
+    parser.add_argument('--refresh-crew',
+            action='store_true',
+            help='Refreshes all crew/equipment so they can be used again on the current day.',
+            )
+
     parser.add_argument('--add-upgrade',
             action=FlexiSetAction,
             help="""
@@ -1230,6 +1235,26 @@ def main():
                         crew.set_job_xp(job_info.name, target_xp)
                         crew.reserve_xp = remaining_reserve_xp
                         do_save = True
+
+        # Refresh Crew
+        if args.refresh_crew:
+            did_refresh = False
+            print('- Refreshing all crew and equipment')
+            for item in save.inventory.items:
+                if item.used == 1:
+                    item.used = 0
+                    did_refresh = True
+            for loadout in save.inventory.loadouts.values():
+                if loadout.used == 1:
+                    loadout.used = 0
+                    did_refresh = True
+            if len(save.used_crew) > 0:
+                save.used_crew = []
+                did_refresh = True
+            if did_refresh:
+                do_save = True
+            else:
+                print('  - No crew/equipment needed refreshing!')
 
         # New upgrades.  Note that all our keyitem mappings have already been computed
         if args.add_upgrade:

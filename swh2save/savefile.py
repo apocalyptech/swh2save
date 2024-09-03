@@ -2342,11 +2342,11 @@ class Savefile(Datafile, Serializable):
         for _ in range(num_crew_list):
             self.crew_list.append(self.read_string())
 
-        # And then another, shorter crew list.  Weird
-        self.crew_subset = []
-        num_crew_subset = self.read_uint8()
-        for _ in range(num_crew_subset):
-            self.crew_subset.append(self.read_string())
+        # List of crew which have already been used today
+        self.used_crew = []
+        num_used_crew = self.read_uint8()
+        for _ in range(num_used_crew):
+            self.used_crew.append(self.read_string())
 
         # More data which feels like we must still be inside another chunk.
         # Maybe we're really not even out of the header yet?  Anyway.
@@ -2488,9 +2488,9 @@ class Savefile(Datafile, Serializable):
         for crew in self.crew_list:
             odf.write_string(crew)
 
-        # Crew subset
-        odf.write_uint8(len(self.crew_subset))
-        for crew in self.crew_subset:
+        # Used Crew
+        odf.write_uint8(len(self.used_crew))
+        for crew in self.used_crew:
             odf.write_string(crew)
 
         # ReDe
@@ -2629,7 +2629,7 @@ class Savefile(Datafile, Serializable):
             ], verbose)
         self._json_simple(my_dict, [
             'crew_list',
-            'crew_subset',
+            'used_crew',
             ])
         if self.rede is not None:
             self._json_object_single(my_dict, [
