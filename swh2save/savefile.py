@@ -2001,6 +2001,13 @@ class CrewController(Chunk):
     means "Persona" given the game data names.  So I expect that "PeCo" means
     something like "Persona Controller" or whatever.  I'm using "Crew" instead
     'cause it's fewer chars and I like the sound better.
+
+    NOTE: It's actually probably not the best idea to iterate over this structure
+    when doing save-edit tasks on your unlocked crew, because at a couple points
+    in the game, you end up with some extra records in here, namely:
+    crew_captain_rearmed_combat and crew_captain_final_boss.  It's probably best
+    to iterate over the main `crew_list` instead, which should be out in the
+    main Savefile object, and then use that to get to the crew objects we want.
     """
 
     def __init__(self, df):
