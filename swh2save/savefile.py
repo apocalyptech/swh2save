@@ -466,8 +466,8 @@ class InventoryItem(Chunk):
         # This basically always appear to be 0
         self.unknown_4 = self.df.read_uint32()
 
-        # TODO: I think this is 1 if the item's been used in the current day
-        self.unknown_5 = self.df.read_uint32()
+        # Used in the past day
+        self.used = self.df.read_uint32()
         #print(f'{self.unknown_1} {self.id} {self.flags} {self.name} {self.unknown_4} {self.unknown_5}')
 
 
@@ -478,7 +478,7 @@ class InventoryItem(Chunk):
         odf.write_uint32(self.flags)
         odf.write_string(self.name)
         odf.write_uint32(self.unknown_4)
-        odf.write_uint32(self.unknown_5)
+        odf.write_uint32(self.used)
 
 
     def __str__(self):
@@ -530,7 +530,7 @@ class InventoryItem(Chunk):
             'flags',
             'name',
             'unknown_4',
-            'unknown_5',
+            'used',
             ])
         return my_dict
 
@@ -559,11 +559,10 @@ class Loadout(Chunk):
         self.utility_3 = self._get_inventory_item_or_id()
         self.cur_hat = self.df.read_string()
 
-        # Often 0 on my saves, but I've also seen 1; I suspect
-        # that means "used in a mission already"
-        self.state = self.df.read_uint32()
+        # 0 for available, 1 for "used in a mission today"
+        self.used = self.df.read_uint32()
 
-        #print(f'{self.zero} {self.name} | {self.unknown_3} | {self.state}')
+        #print(f'{self.zero} {self.name} | {self.unknown_3} | {self.used}')
 
 
     def _get_inventory_item_or_id(self):
@@ -590,7 +589,7 @@ class Loadout(Chunk):
         self._write_inventory_item(self.utility_2, odf)
         self._write_inventory_item(self.utility_3, odf)
         odf.write_string(self.cur_hat)
-        odf.write_uint32(self.state)
+        odf.write_uint32(self.used)
 
 
     def _write_inventory_item(self, value, odf):
@@ -624,7 +623,7 @@ class Loadout(Chunk):
         my_dict['utility_3'] = self._to_json_item(self.utility_3)
         self._json_simple(my_dict, [
             'cur_hat',
-            'state',
+            'used',
             ])
         return my_dict
 
@@ -1282,9 +1281,9 @@ class Entities(Chunk):
         self._json_simple(my_dict, [
             'zero',
             ])
-        my_dict['entities'] = []
         # Munging a bit...
         if verbose:
+            my_dict['entities'] = []
             for value, name in self.entities:
                 my_dict['entities'].append({
                     'value': value,
@@ -1292,6 +1291,7 @@ class Entities(Chunk):
                     })
         else:
             my_dict['num_entities'] = len(self.entities)
+            my_dict['entities'] = '(omitted)'
         self._json_simple(my_dict, [
             'unknown_1',
             'unknown_2',
@@ -1318,6 +1318,15 @@ class WorldData(Chunk):
         num_cloud_data = self.df.read_varint()
         for _ in range(num_cloud_data):
             self.cloud_data.append(WorldCloudData(self.df))
+
+        # TODO: So.  The only actual data I care about in here is the
+        # cloud data above, and this section of the file is in the "skippable"
+        # section which uses a completely different string registry.  Cloud
+        # data doesn't contain any strings, so if I wanted, I could just skip
+        # everything else, and then have a much simpler skipped-section
+        # handling.  There'd be no need to worry about strings at all; just
+        # save the raw data and the slap it back in!  Not sure if I want
+        # to do that or not.
 
         # I'm pretty sure that the stuff below belongs here in the PWDT
         # chunk, since the "behaviors" seem to just be for overworld
@@ -1382,6 +1391,7 @@ class WorldData(Chunk):
                 ])
         else:
             my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
+            my_dict['unknown_entity_ids'] = '(omitted)'
         self._json_simple(my_dict, [
             'unknown_end_bytes',
             ])
@@ -1823,10 +1833,7 @@ class CrewStatus(Chunk):
 
         # These do seem to be uint32s instead of varints w/ some extra unknown data
         self.reserve_xp = self.df.read_uint32()
-        # TODO: I suspect this is the number of missions they've been on; some
-        # conversations are triggered based on that, and I don't see where else that
-        # info would be stored.
-        self.unknown = self.df.read_uint32()
+        self.num_missions = self.df.read_uint32()
         self.personal_upgrade_count = self.df.read_uint32()
 
 
@@ -1846,7 +1853,7 @@ class CrewStatus(Chunk):
         for selection in self.cog_selections:
             odf.write_string(selection)
         odf.write_uint32(self.reserve_xp)
-        odf.write_uint32(self.unknown)
+        odf.write_uint32(self.num_missions)
         odf.write_uint32(self.personal_upgrade_count)
 
 
@@ -1867,7 +1874,7 @@ class CrewStatus(Chunk):
         self._json_simple(my_dict, [
             'cog_selections',
             'reserve_xp',
-            'unknown',
+            'num_missions',
             'personal_upgrade_count',
             ])
         return my_dict
