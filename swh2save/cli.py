@@ -276,9 +276,16 @@ class GameDataLookup:
 
     def check_args(self, args):
         for arg_var in self.arg_vars:
+            arg_text = '--{}'.format(arg_var.replace('_', '-'))
             arg_value = getattr(args, arg_var)
-            if arg_value is not None:
-                arg_text = '--{}'.format(arg_var.replace('_', '-'))
+            if arg_value is None:
+                continue
+            elif type(arg_value) == str:
+                if arg_value == 'list' or arg_value == 'help':
+                    self.needs_dump = True
+                else:
+                    self.check_specific(arg_value, arg_text)
+            else:
                 if 'list' in arg_value or 'help' in arg_value:
                     self.needs_dump = True
                 else:
@@ -580,6 +587,15 @@ def main():
             help='Unlock all hats',
             )
 
+    parser.add_argument('--set-leeway-hat',
+            type=str,
+            help="""
+                Sets the hat equipped on Capt. Leeway.  Will likely be overwritten during
+                story progression, if that trigger has not been reached yet.  This does
+                *not* unlock the specified hat for ordinary use.
+                """,
+            )
+
     parser.add_argument('--add-ship-equipment',
             action=FlexiListAction,
             help="""
@@ -804,7 +820,10 @@ def main():
                     ],
                 ),
             'hat': GameDataLookup('Hats', HATS,
-                'add_hat',
+                [
+                    'add_hat',
+                    'set_leeway_hat',
+                    ],
                 ),
             }
 
@@ -1460,6 +1479,16 @@ def main():
                 save.inventory.hats.extend(sorted(needed_hats))
                 if args.set_new_item:
                     save.inventory.new_hats.extend(sorted(needed_hats))
+                do_save = True
+
+        # Capt. Leeway's hat
+        if args.set_leeway_hat is not None:
+            label = HATS[args.set_leeway_hat].label
+            if save.inventory.leeway_hat == args.set_leeway_hat:
+                print(f'- Capt. Leeway is already wearing the "{label}" hat, skipping')
+            else:
+                print(f'- Setting Capt. Leeway hat to: {label}')
+                save.inventory.leeway_hat = args.set_leeway_hat
                 do_save = True
 
         # A cluster of inventory args which are all handled in the same way
