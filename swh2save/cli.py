@@ -208,6 +208,66 @@ class FlexiSetAction(argparse.Action):
         setattr(namespace, self.dest, arg_value)
 
 
+class GameDataLookup:
+
+    def __init__(self, label, lookup, arg_vars, acceptable_extras=None):
+        self.label = label
+        self.lookup = lookup
+        if type(arg_vars) == list:
+            self.arg_vars = arg_vars
+        else:
+            self.arg_vars = [arg_vars]
+        if acceptable_extras is None:
+            self.acceptable_extras = set()
+        else:
+            self.acceptable_extras = acceptable_extras
+        self.needs_dump = False
+
+
+    def check_specific(self, arg_value, arg_name):
+        # We're doing some duplicate checking here when called via `check_args`,
+        # but whatever.
+        if arg_value == 'list' or arg_value == 'help':
+            self.needs_dump = True
+        else:
+            if arg_value not in self.lookup and arg_value not in self.acceptable_extras:
+                print(f'ERROR: "{arg_value}" is not valid in {arg_name}.  Available options will be shown below.')
+                print('')
+                self.needs_dump = True
+
+
+    def check_args(self, args):
+        for arg_var in self.arg_vars:
+            arg_value = getattr(args, arg_var)
+            if arg_value is not None:
+                arg_text = '--{}'.format(arg_var.replace('_', '-'))
+                if 'list' in arg_value or 'help' in arg_value:
+                    self.needs_dump = True
+                else:
+                    for item in arg_value:
+                        self.check_specific(item, arg_text)
+                        if self.needs_dump:
+                            break
+
+
+    def show(self, force=False):
+        if force or self.needs_dump:
+            header = f'Valid {self.label}'
+            print(header)
+            print('-'*len(header))
+            print('')
+            for name, obj in sorted(self.lookup.items()):
+                if name == obj.label:
+                    print(f' - {name}')
+                else:
+                    print(f' - {name}: {obj.label}')
+            for extra in sorted(self.acceptable_extras):
+                print(f' - {extra}')
+            print('')
+            return True
+        return False
+
+
 def main():
 
     parser = argparse.ArgumentParser(
@@ -282,6 +342,36 @@ def main():
     parser.add_argument('--water',
             type=int,
             help='Sets the amount of water (money)',
+            )
+
+    parser.add_argument('--crew-level',
+            type=str,
+            action='append',
+            help="""
+                Levels up the specified character(s) to the specified level.
+                This arg requires three parts separated by colons: first, the
+                character ID (or `all`), then the job ID (or `all` for all
+                jobs, `current` for the crewmember's current job, or `default`
+                for the crewmember's default job), and finally the level (or
+                `max`).  For instance, to level all crew to max level, use
+                `all:all:max`.  To level just Wesley's Reaper level to 4, use
+                `wesley:reaper:4`.  This argument can be specified more than
+                once to perform more that one action.  By default this argument
+                will *not* downgrade anyone's level, but if you use the
+                --allow-downlevel arg as well, it will do so.  Specify `help`
+                or `list` as the argument to show the valid character and job
+                IDs.
+                """,
+            )
+
+    parser.add_argument('--allow-downlevel',
+            action='store_true',
+            help="""
+                Ordinarily when setting crew level/XP, this utility won't move any
+                crew's level down -- it'll only go up.  If you do want to set your crew
+                levels lower than they currently are, though, use this arg to allow that
+                behavior.
+                """,
             )
 
     parser.add_argument('--add-upgrade',
@@ -595,50 +685,78 @@ def main():
 
     ###
     ### Now we've got args.add_key_item and args.add_upgrade populated based
-    ### on user args.  First up, make sure that each of them is valid (this also
-    ### checks a few things other than just key items and upgrades).
+    ### on user args.  Now we should be able to doublecheck that all of our
+    ### passed-in args are valid in terms of the object IDs being used.  This
+    ### is all way over-engineered.  Ah well.
     ###
 
+    # First, some definitions for the various things we'll look up
+    id_lookups = {
+            'job': GameDataLookup('Jobs', JOBS,
+                [],
+                acceptable_extras={'all', 'current', 'default'},
+                ),
+            'crew': GameDataLookup('Crew', CREW,
+                [],
+                acceptable_extras={'all'},
+                ),
+            'weapon': GameDataLookup('Weapons', WEAPONS,
+                'add_weapon',
+                ),
+            'utility': GameDataLookup('Utilities', UTILITIES,
+                'add_utility',
+                ),
+            'equipment': GameDataLookup('Ship Equipment', SHIP_EQUIPMENT,
+                'add_ship_equipment',
+                ),
+            'key': GameDataLookup('Key Items', KEY_ITEMS,
+                [
+                    'add_key_item',
+                    'remove_key_item',
+                    ],
+                ),
+            'upgrade': GameDataLookup('Upgrades', UPGRADES,
+                [
+                    'add_upgrade',
+                    'remove_upgrade',
+                    ],
+                ),
+            'hat': GameDataLookup('Hats', HATS,
+                'add_hat',
+                ),
+            }
+
+    # Basic arg checking
+    if not args.item_info:
+        for id_lookup in id_lookups.values():
+            id_lookup.check_args(args)
+
+    # Crew Levelling requires some extra fanciness
+    if args.crew_level is not None:
+        for level_arg in args.crew_level:
+            if level_arg == 'list' or level_arg == 'help':
+                id_lookups['crew'].needs_dump = True
+                id_lookups['job'].needs_dump = True
+                break
+            parts = level_arg.split(':')
+            if len(parts) != 3:
+                parser.error('--crew-level argument must contain three parts separated by colons (crew:job:level)')
+            crew, job, level = parts
+            id_lookups['crew'].check_specific(crew, '--crew-level')
+            id_lookups['job'].check_specific(job, '--crew-level')
+            if level != 'max':
+                try:
+                    level = int(level)
+                except ValueError as e:
+                    parser.error(f'The level component in --crew-level must be `max` or a number from 0 to {len(XP)-1}')
+                if level < 0 or level+1 > len(XP):
+                    parser.error(f'The level component in --crew-level must be `max` or a number from 0 to {len(XP)-1}')
+
+    # Now loop through and display whatever needs to be displayed
     did_info_dump = False
-    for section, lookup, arg_var in [
-            ('Weapons', WEAPONS, 'add_weapon'),
-            ('Utilities', UTILITIES, 'add_utility'),
-            ('Ship Equipment', SHIP_EQUIPMENT, 'add_ship_equipment'),
-            ('Key Items', KEY_ITEMS, 'add_key_item'),
-            ('Key Items', KEY_ITEMS, 'remove_key_item'),
-            ('Upgrades', UPGRADES, 'add_upgrade'),
-            ('Upgrades', UPGRADES, 'remove_upgrade'),
-            ('Hats', HATS, 'add_hat'),
-            ]:
-        show_possibilities = False
-        if args.item_info:
-            show_possibilities = True
-        else:
-            if arg_var is not None:
-                arg_value = getattr(args, arg_var)
-                if arg_value is not None:
-                    arg_text = '--{}'.format(arg_var.replace('_', '-'))
-                    if 'list' in arg_value:
-                        show_possibilities = True
-                    else:
-                        for item in arg_value:
-                            if item not in lookup:
-                                print(f'ERROR: "{item}" is not valid in {arg_text}.  Showing available options:')
-                                print('')
-                                show_possibilities = True
-                                break
-        if show_possibilities:
-            header = f'Valid {section}'
-            print(header)
-            print('-'*len(header))
-            print('')
-            for name, obj in sorted(lookup.items()):
-                if name == obj.label:
-                    print(f' - {name}')
-                else:
-                    print(f' - {name}: {obj.label}')
-            print('')
-            did_info_dump = True
+    for id_lookup in id_lookups.values():
+        did_this_dump = id_lookup.show(force=args.item_info)
+        did_info_dump = did_info_dump or did_this_dump
     if did_info_dump:
         return
 
@@ -713,7 +831,34 @@ def main():
         print(f' - Water (money): {save.resources.water}')
         print(f' - Fragments: {save.resources.fragments}')
         print(f'Crew Unlocked: {len(save.header.crew)}')
-        print_columns(sorted(save.header.crew), lookup=CREW, lookup_sort=True)
+        crew_report = {}
+        for crew in save.crew:
+            if crew.name == 'crew_captain_final_boss' or crew.name == 'crew_captain_rearmed_combat':
+                continue
+            crew_report[CREW[crew.name].label] = crew
+        for label, crew in sorted(crew_report.items()):
+            print(f' - {label} ({crew.name})')
+            job_report = []
+            for job in crew.jobs.values():
+                if args.verbose:
+                    job_report.append('{}: {} ({} XP)'.format(
+                        JOBS[job.name].label,
+                        job.level,
+                        job.xp,
+                        ))
+                else:
+                    job_report.append('{}: {}'.format(
+                        JOBS[job.name].label,
+                        job.level,
+                        ))
+            print_columns(
+                    job_report,
+                    columns=columns,
+                    indent='   ',
+                    minimum_lines=2,
+                    )
+            if crew.reserve_xp > 0:
+                print(f'   - Reserve XP: {crew.reserve_xp}')
         print(f'Unlocked Sub Upgrades: {len(save.ship.upgrades)}/{len(UPGRADES)}')
         if args.verbose:
             upgrade_mapping = {
@@ -891,6 +1036,80 @@ def main():
                 print(f'- Setting fragments to: {args.fragments}')
                 save.resources.fragments = args.fragments
                 do_save = True
+
+        # Crew Level.  Args should be validated by now
+        if args.crew_level is not None:
+            for level_arg in args.crew_level:
+                crew_name, job_name, level = level_arg.split(':')
+
+                # Get the level to set
+                if level == 'max':
+                    level = len(XP)-1
+                else:
+                    level = int(level)
+
+                # Get the crew we're acting on
+                report_not_found = True
+                if crew_name == 'all':
+                    crew_names = list(save.crew.keys())
+                    report_not_found = False
+                else:
+                    crew_names = [crew_name]
+
+                # Loop through crew
+                for crew_name in crew_names:
+                    crew_info = CREW[crew_name]
+                    if crew_info.name not in save.crew:
+                        if report_not_found:
+                            print(f'- {CREW[crew_name].label} has not been unlocked, not setting level')
+                        continue
+                    crew = save.crew[crew_info.name]
+                    if job_name == 'all':
+                        if args.allow_downlevel:
+                            print(f'- {crew_info.label}: Setting all jobs to level {level} (allowing downlevelling)')
+                        else:
+                            print(f'- {crew_info.label}: Upgrading all jobs to level {level}')
+                        crew.all_jobs_level_to(level, allow_downlevel=args.allow_downlevel)
+                        do_save = True
+                    else:
+                        if job_name == 'default':
+                            job_info = CREW[crew.name].default_job
+                        elif job_name == 'current':
+                            if crew_name in save.inventory.loadouts:
+                                cur_weapon = save.inventory.loadouts[crew.name].cur_weapon
+                                if cur_weapon == 0:
+                                    # No weapon equipped; current job is the default
+                                    job_info = CREW[crew_name].default_job
+                                else:
+                                    if type(cur_weapon) == int:
+                                        raise RuntimeError(f"ERROR: {crew_info.label}'s current weapon (ID {cur_weapon}) was not found in savefile")
+                                    if cur_weapon.name not in WEAPONS:
+                                        raise RuntimeError(f"ERROR: {crew_info.label}'s current weapon ({cur_weapon}) was not found in gamedata")
+                                    job_info = WEAPONS[cur_weapon.name].job
+                            else:
+                                # No loadout?  I guess current job is the default
+                                job_info = CREW[crew_name].default_job
+                        else:
+                            job_info = JOBS[job_name]
+                        do_set = True
+                        if job_info.name in crew.jobs:
+                            job_status = crew.jobs[job_info.name]
+                            if job_status.level == level:
+                                print(f"- {crew_info.label}'s {job_info.label} level is already {level}, skipping")
+                                do_set = False
+                            elif job_status.level > level and not args.allow_downlevel:
+                                print(f"- {crew_info.label}'s {job_info.label} level is already {job_status.level}, skipping")
+                                do_set = False
+                        elif level == 0:
+                            print(f"- {crew_info.label}'s {job_info.label} level is already 0, skipping")
+                            do_set = False
+                        if do_set:
+                            if args.allow_downlevel:
+                                print(f'- {crew_info.label}: Setting {job_info.label} to level {level} (allowing downlevelling)')
+                            else:
+                                print(f'- {crew_info.label}: Upgrading {job_info.label} to level {level}')
+                            crew.job_level_to(job_info.name, level, allow_downlevel=args.allow_downlevel)
+                            do_save = True
 
         # New upgrades.  Note that all our keyitem mappings have already been computed
         if args.add_upgrade:

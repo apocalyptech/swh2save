@@ -22,6 +22,7 @@ import enum
 import binascii
 
 from .datafile import Datafile
+from .gamedata import XP, JOBS
 
 
 class Serializable:
@@ -683,10 +684,11 @@ class Inventory(Chunk):
         self.leeway_hat = self.df.read_string()
 
         # Character Loadouts
-        self.loadouts = []
+        self.loadouts = {}
         num_chars = self.df.read_uint8()
         for _ in range(num_chars):
-            self.loadouts.append(Loadout(self.df, self.items_by_id))
+            loadout = Loadout(self.df, self.items_by_id)
+            self.loadouts[loadout.name] = loadout
 
 
     def _write_to(self, odf):
@@ -725,7 +727,7 @@ class Inventory(Chunk):
 
         # Character Loadout
         odf.write_uint8(len(self.loadouts))
-        for loadout in self.loadouts:
+        for loadout in self.loadouts.values():
             loadout.write_to(odf)
 
 
@@ -755,9 +757,7 @@ class Inventory(Chunk):
             'new_hats',
             'leeway_hat',
             ])
-        self._json_object_arr(my_dict, [
-            'loadouts',
-            ], verbose)
+        my_dict['loadouts'] = list([l.to_json() for l in self.loadouts.values()])
         return my_dict
 
 
@@ -1779,6 +1779,18 @@ class CrewStatus(Chunk):
     better, though.
     """
 
+    # The order that jobs seem to appear in; used when adding new jobs
+    # to our structure.  I don't think we *have* to do this, but I
+    # like keeping the save as vanilla as possible.
+    JOB_ORDER = [
+            'engineer',
+            'tank',
+            'hunter',
+            'boomer',
+            'flanker',
+            'sniper',
+            ]
+
     def __init__(self, df):
         super().__init__(df, 'Pers')
 
@@ -1809,7 +1821,11 @@ class CrewStatus(Chunk):
         for _ in range(num_cog_selections):
             self.cog_selections.append(self.df.read_string())
 
+        # These do seem to be uint32s instead of varints w/ some extra unknown data
         self.reserve_xp = self.df.read_uint32()
+        # TODO: I suspect this is the number of missions they've been on; some
+        # conversations are triggered based on that, and I don't see where else that
+        # info would be stored.
         self.unknown = self.df.read_uint32()
         self.personal_upgrade_count = self.df.read_uint32()
 
@@ -1857,6 +1873,75 @@ class CrewStatus(Chunk):
         return my_dict
 
 
+    def job_level_to(self, job_name, to_level, allow_downlevel=False):
+        """
+        Sets the specified `job_name` to the given `to_level`.  By default this will
+        only allow *increasing* the level, but if you pass `allow_downlevel` as `True`,
+        it'll do so, and also remove any selected cogs from the levels that are
+        being removed.
+
+        A fair bit of the logic in here is technically also done in the argument-validation
+        routines on the CLI side, but that's fine.
+        """
+        if job_name not in JOBS:
+            raise RuntimeError(f'Job "{job_name}" not found in gamedata structures')
+        job_info = JOBS[job_name]
+        if job_name in self.jobs:
+            # Already have a job record for this job
+            job = self.jobs[job_name]
+            if job.level == to_level:
+                return
+            elif job.level < to_level:
+                job.level = to_level
+                job.xp = XP.level_to_xp[to_level]
+            else:
+                if allow_downlevel:
+                    # First remove any cog selections which would require a level we
+                    # no longer have.  This may not actually be required; I suspect the
+                    # game would just auto-remove an invalid cog selection if we didn't
+                    # do it here.  Still, may as well.
+                    cur_cog_selections = set(self.cog_selections)
+                    for skills_idx in range(job.level, to_level, -1):
+                        level_skills = job_info.skills[skills_idx]
+                        for skill in level_skills:
+                            if skill in cur_cog_selections:
+                                # This is kind of inefficient 'cause it's a list, but whatever.
+                                self.cog_selections.remove(skill)
+
+                    # Now do the actual down-levelling
+                    job.level = to_level
+                    job.xp = XP.level_to_xp[to_level]
+        else:
+            # Need a new job record for the job.  We're doing some shenanigans here to
+            # ensure that the jobs are stored in the same order the game would.  The
+            # alternative would be to do that in the save routine, but I think I'd rather
+            # have that complexity here, and that way the save routines would generate
+            # identical files even if the game changes up which order it writes stuff.
+            if to_level == 0:
+                # Don't bother if the level set was zero, though
+                return
+            new_jobs = {}
+            for new_job_name in CrewStatus.JOB_ORDER:
+                if new_job_name in self.jobs:
+                    new_jobs[new_job_name] = self.jobs[new_job_name]
+                elif new_job_name == job_name:
+                    new_job = JobStatus(new_job_name)
+                    new_job.level = to_level
+                    new_job.xp = XP.level_to_xp[to_level]
+                    new_jobs[new_job_name] = new_job
+            self.jobs = new_jobs
+
+
+    def all_jobs_level_to(self, to_level, allow_downlevel=False):
+        """
+        Sets *all* jobs to the given `to_level`.  By default this will only increase
+        the level, not decrease.  To allow downlevelling, set `allow_downlevel`
+        to `True`.
+        """
+        for job_name in CrewStatus.JOB_ORDER:
+            self.job_level_to(job_name, to_level, allow_downlevel=allow_downlevel)
+
+
 class CrewController(Chunk):
     """
     `PeCo` chunk.  Contains a bunch of `Pers` chunks, which for SWH2 presumably
@@ -1885,6 +1970,26 @@ class CrewController(Chunk):
 
     def __len__(self):
         return len(self.crew)
+
+
+    def __getitem__(self, name):
+        return self.crew[name]
+
+
+    def __contains__(self, name):
+        return name in self.crew
+
+
+    def keys(self):
+        return self.crew.keys()
+
+
+    def values(self):
+        return self.crew.values()
+
+
+    def items(self):
+        return self.crew.items()
 
 
     def _write_to(self, odf):

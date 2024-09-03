@@ -125,8 +125,50 @@ def main():
                     else:
                         return self.label.casefold() > other.casefold()
 
+
+            class Experience:
+                \"\"\"
+                Holds information about what the XP requirements are for levels.  Note
+                that this is *not* a GameData object.
+                \"\"\"
+
+                def __init__(self, xp_reqs):
+                    \"\"\"
+                    `xp_reqs` should be a list of the XP values required to unlock the
+                    various levels
+                    \"\"\"
+                    self.xp_to_level = {}
+                    self.level_to_xp = {}
+                    for level, xp_req in enumerate(xp_reqs):
+                        self.xp_to_level[xp_req] = level
+                        self.level_to_xp[level] = xp_req
+                        self.max_xp = xp_req
+                        self.max_level = level
+
+
+                def __len__(self):
+                    return len(self.xp_to_level)
+
+
+            class Job(GameData):
+
+                def __init__(self, name, label, skills):
+                    super().__init__(name, label)
+                    self.skills = skills
+
+
+            class Weapon(GameData):
+
+                def __init__(self, name, label, job):
+                    super().__init__(name, label)
+                    self.job = job
+
+
             class Crew(GameData):
-                pass
+
+                def __init__(self, name, label, default_job):
+                    super().__init__(name, label)
+                    self.default_job = default_job
 
 
             class Upgrade(GameData):
@@ -158,13 +200,12 @@ def main():
             class Utility(GameData):
                 pass
 
-
-            class Weapon(GameData):
-                pass
-
             """), file=odf)
 
         with zipfile.ZipFile(os.path.join(core_dir, 'Game.pak')) as game_pak:
+
+            # We'll need this for a couple of data types
+            weapon_job_mapping = {}
 
             # First up: load in strings for our selected language
             # TODO: really I should be supporting all languages the game supports.
@@ -188,22 +229,181 @@ def main():
                     labels[parts[0]] = parts[1]
 
 
-            # Do crew first
+            # Pull in some job information
+            with game_pak.open('Definitions/jobs.xml') as job_xml:
+
+                root = ET.fromstring(job_xml.read())
+
+                # First up: Experience
+                xp_reqs = ['0']
+                first = root[0]
+                for child in first:
+                    if child.tag == 'ExperienceLevels':
+                        for inner_child in child:
+                            if inner_child.tag == 'Level':
+                                # Not turning these into ints, since all we're doing
+                                # is joining them as strings anyway.
+                                xp_reqs.append(inner_child.text)
+                        break
+                if len(xp_reqs) == 0:
+                    raise RuntimeError("Couldn't find XP->Level values")
+                print('XP = Experience([{}])'.format(
+                    ', '.join(xp_reqs),
+                    ), file=odf)
+                print('', file=odf)
+
+                # Now the actual jobs themselves
+                job_redirects = {}
+                print('JOBS_REAL = {', file=odf)
+                for child in root:
+                    if 'Abstract' in child.attrib:
+                        continue
+                    name = child.attrib['Name']
+                    label = labels[f'job_{name}']
+                    job_redirects[name] = name
+                    job_redirects[label.lower()] = name
+                    skills = []
+                    for inner_child in child:
+                        if inner_child.tag == 'Upgrades':
+                            for upgrade in inner_child:
+                                upgrade_level = int(upgrade.attrib['Level'])
+                                upgrade_name = upgrade.text
+                                if upgrade_level+1 > len(skills):
+                                    skills.append([])
+                                skills[-1].append(upgrade_name)
+                            break
+                    print("        '{}': Job(".format(name), file=odf)
+                    print("            '{}',".format(name), file=odf)
+                    print("            \"{}\",".format(quote_string(label)), file=odf)
+                    print("            [", file=odf)
+                    for level in skills:
+                        print("                [", file=odf),
+                        for skill in level:
+                            print("                    '{}',".format(skill), file=odf)
+                        print("                    ],", file=odf)
+                    print("                ],", file=odf)
+                    print("            ),", file=odf)
+                print('        }', file=odf)
+                print('', file=odf)
+
+                # And also, we want users to be able to be able to refer to jobs
+                # by their in-game names.
+                print('JOBS = {', file=odf)
+                for job_usable, job_real in job_redirects.items():
+                    print(f"        '{job_usable}': JOBS_REAL['{job_real}'],", file=odf)
+                print('        }', file=odf)
+                print('', file=odf)
+
+            # Next up, what weapons belong to which jobs.  I'm storing this because
+            # I want to be able to level up the "current" class for crew, and the
+            # only real way to do that is via their weapon.  (I'll also want it for
+            # unlocking crew, because I want to be able to give XP in their "default"
+            # class, which is defined only by their default weapon.)
+            with game_pak.open('Definitions/weapons.xml') as xml_data:
+
+                # A list of weapons we know we don't want to bother with.  These are
+                # virtualish weapons used as part of char skills, I think.  Shouldn't
+                # ever show up in inventory lists
+                known_weapon_skips = {
+                        'weapon_utility_grenade_launcher_no_aimline',
+                        'weapon_utility_grenade_launcher_crippled',
+                        'weapon_utility_grenade_launcher_stun',
+                        'weapon_utility_grenade_launcher_ice',
+                        'weapon_utility_rocket_launcher_01',
+                        'weapon_utility_rocket_launcher_02',
+                        'weapon_utility_sidearm_01_aimline',
+                        'weapon_action_stun_gun',
+                        'weapon_action_diver_laser',
+                        }
+
+                print('WEAPONS = {', file=odf)
+                root = ET.fromstring(xml_data.read())
+                for child in root:
+                    name = child.attrib['Name']
+
+                    # Figure out what job this gun belongs to, first reading from
+                    # a template (if we're inheriting from one), and then from tags
+                    # directly on the weapon.
+                    job = None
+                    if 'Template' in child.attrib:
+                        job = weapon_job_mapping[child.attrib['Template']]
+                    for inner_child in child:
+                        if inner_child.tag == 'Job':
+                            job = inner_child.text
+                            break
+                    weapon_job_mapping[name] = job
+
+                    # Now, if we're part of the known skips, skip us!
+                    if name in known_weapon_skips:
+                        continue
+
+                    # Now if we're abstract, continue on -- don't actually care about it.
+                    if 'Abstract' in child.attrib:
+                        continue
+
+                    # Likewise, if we've been set as a Virtual weapon, we sort of don't care.
+                    # Continue.
+                    got_virtual = False
+                    for inner_child in child:
+                        if inner_child.tag == 'Virtual' and inner_child.text == 'true':
+                            got_virtual = True
+                            break
+                    if got_virtual:
+                        continue
+
+                    # Get our english label
+                    label_lookup = f'weapon_{name}'
+                    if label_lookup not in labels:
+                        print(f'NOTICE: skipping Weapon "{name}"; no translation found.')
+                        continue
+                    label = labels[label_lookup]
+
+                    # Now output the struct
+                    print(f"        '{name}': Weapon(", file=odf)
+                    print(f"            '{name}',", file=odf)
+                    print("            \"{}\",".format(quote_string(label)), file=odf)
+                    print(f"            JOBS['{job}'],", file=odf)
+                    print("            ),", file=odf)
+                print('        }', file=odf)
+                print('', file=odf)
+
+
+            # Then: crew
             with game_pak.open('Definitions/personas.xml') as persona_xml:
 
-                print('CREW = {', file=odf)
+                crew_redirects = {}
+                print('CREW_REAL = {', file=odf)
                 root = ET.fromstring(persona_xml.read())
                 for child in root:
                     if 'Abstract' in child.attrib:
                         continue
                     if 'Template' not in child.attrib or child.attrib['Template'] != 'CREW':
                         continue
-                    print("        '{}': Crew(".format(child.attrib['Name']), file=odf)
-                    print("            '{}',".format(child.attrib['Name']), file=odf)
-                    print("            \"{}\",".format(
-                        quote_string(labels['persona_{}'.format(child.attrib['Name'])])
-                        ), file=odf)
+                    name = child.attrib['Name']
+                    label = labels[f'persona_{name}']
+                    crew_redirects[name] = name
+                    crew_redirects[label.lower()] = name
+                    job = None
+                    for inner_child in child:
+                        if inner_child.tag == 'DefaultWeapon':
+                            default_weapon = inner_child.text
+                            job = weapon_job_mapping[default_weapon]
+                            break
+                    if job is None:
+                        raise RuntimeError(f'No default job found for crew: {name}')
+                    print(f"        '{name}': Crew(", file=odf)
+                    print(f"            '{name}',", file=odf)
+                    print("            \"{}\",".format(quote_string(label)), file=odf)
+                    print(f"            JOBS['{job}'],", file=odf)
                     print("            ),", file=odf)
+                print('        }', file=odf)
+                print('', file=odf)
+
+                # And also, we want users to be able to be able to refer to crew
+                # by their in-game names.
+                print('CREW = {', file=odf)
+                for crew_usable, crew_real in crew_redirects.items():
+                    print(f"        '{crew_usable}': CREW_REAL['{crew_real}'],", file=odf)
                 print('        }', file=odf)
                 print('', file=odf)
 
@@ -226,7 +426,6 @@ def main():
             # ugprades, and then looping through key items yet again.
             keyitems = {}
             with game_pak.open('Definitions/key_items.xml') as keyitem_xml:
-                print('KEY_ITEMS = {', file=odf)
                 root = ET.fromstring(keyitem_xml.read())
                 for child in root:
                     if 'Abstract' in child.attrib:
@@ -237,8 +436,6 @@ def main():
                             loc_name = inner_child.text
                             break
                     keyitems[child.attrib['Name']] = labels[loc_name]
-                print('        }', file=odf)
-                print('', file=odf)
 
 
             # Now a list of ship upgrades
@@ -353,23 +550,10 @@ def main():
 
 
             # Now a few datatypes that we're handling similarly.
-            for xml_filename, var_name, class_name, label_prefix, known_skips in [
-                    ('Definitions/hats.xml', 'HATS', 'Hat', '', set()),
-                    ('Definitions/ship_equipment.xml', 'SHIP_EQUIPMENT', 'ShipEquipment', '', set()),
-                    ('Definitions/utilities.xml', 'UTILITIES', 'Utility', '', set()),
-                    ('Definitions/weapons.xml', 'WEAPONS', 'Weapon', 'weapon_', {
-                        # These are virtualish weapons used as part of char skills, I think.  Shouldn't
-                        # ever show up in inventory lists.
-                        'weapon_utility_grenade_launcher_no_aimline',
-                        'weapon_utility_grenade_launcher_crippled',
-                        'weapon_utility_grenade_launcher_stun',
-                        'weapon_utility_grenade_launcher_ice',
-                        'weapon_utility_rocket_launcher_01',
-                        'weapon_utility_rocket_launcher_02',
-                        'weapon_utility_sidearm_01_aimline',
-                        'weapon_action_stun_gun',
-                        'weapon_action_diver_laser',
-                        }),
+            for xml_filename, var_name, class_name in [
+                    ('Definitions/hats.xml', 'HATS', 'Hat'),
+                    ('Definitions/ship_equipment.xml', 'SHIP_EQUIPMENT', 'ShipEquipment'),
+                    ('Definitions/utilities.xml', 'UTILITIES', 'Utility'),
                     ]:
 
                 with game_pak.open(xml_filename) as xml_data:
@@ -379,6 +563,7 @@ def main():
                     for child in root:
                         if 'Abstract' in child.attrib:
                             continue
+                        name = child.attrib['Name']
                         got_virtual = False
                         for inner_child in child:
                             if inner_child.tag == 'Virtual' and inner_child.text == 'true':
@@ -386,20 +571,12 @@ def main():
                                 break
                         if got_virtual:
                             continue
-                        label_lookup = '{}{}'.format(label_prefix, child.attrib['Name'])
-                        if label_lookup not in labels:
-                            if child.attrib['Name'] not in known_skips:
-                                print('NOTICE: skipping {}({}); no translation found.'.format(
-                                    class_name,
-                                    child.attrib['Name'],
-                                    ))
+                        if name not in labels:
+                            print(f'NOTICE: skipping {class_name} "{name}"; no translation found.')
                             continue
-                        print("        '{}': {}(".format(
-                            child.attrib['Name'],
-                            class_name,
-                            ), file=odf)
-                        print("            '{}',".format(child.attrib['Name']), file=odf)
-                        print("            \"{}\",".format(quote_string(labels[label_lookup])), file=odf)
+                        print(f"        '{name}': {class_name}(", file=odf)
+                        print(f"            '{name}',", file=odf)
+                        print("            \"{}\",".format(quote_string(labels[name])), file=odf)
                         print("            ),", file=odf)
                     print('        }', file=odf)
                     print('', file=odf)
