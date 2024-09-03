@@ -208,6 +208,44 @@ class FlexiSetAction(argparse.Action):
         setattr(namespace, self.dest, arg_value)
 
 
+class FlexiSetAllAction(argparse.Action):
+    """
+    A variant of FlexiSetAction which, in addition to `help` and `list`,
+    will accept the meta-command `all`.  If `all` is encountered at
+    any point, the resultant set will only have `all` in it.  `help`/`list`
+    will override `all`, though.
+    """
+
+    def __call__(self, parser, namespace, this_value, option_string):
+
+        # Force the attribute to a set, if it isn't already
+        arg_value = getattr(namespace, self.dest)
+        if not isinstance(arg_value, set):
+            arg_value = set()
+
+        # Check for `list`
+        if 'list' in arg_value:
+            return
+
+        # Split the given arg, if necessary
+        if ',' in this_value:
+            values = set([v.strip() for v in this_value.split(',')])
+        else:
+            values = {this_value.strip()}
+
+        # Check to see if `list` or `help` was specified.  If so,
+        # trim it down, otherwise add the new values.
+        if 'list' in values or 'help' in values:
+            arg_value = {'list'}
+        elif 'all' in values or 'all' in arg_value:
+            arg_value = {'all'}
+        else:
+            arg_value |= values
+
+        # Set our value and continue on!
+        setattr(namespace, self.dest, arg_value)
+
+
 class GameDataLookup:
 
     def __init__(self, label, lookup, arg_vars, acceptable_extras=None):
@@ -342,6 +380,16 @@ def main():
     parser.add_argument('--water',
             type=int,
             help='Sets the amount of water (money)',
+            )
+
+    parser.add_argument('--unlock-crew',
+            action=FlexiSetAllAction,
+            help="""
+                Unlocks the specified crew members.  Can be specified more than once,
+                and/or separate crew member names with commas.  Specify `all` to
+                unlock all crew, or `list`/`help` to get a list of valid crew
+                identifiers.
+                """,
             )
 
     parser.add_argument('--crew-level',
@@ -731,7 +779,7 @@ def main():
                 acceptable_extras={'all', 'current', 'default'},
                 ),
             'crew': GameDataLookup('Crew', CREW,
-                [],
+                'unlock_crew',
                 acceptable_extras={'all'},
                 ),
             'weapon': GameDataLookup('Weapons', WEAPONS,
@@ -1086,6 +1134,40 @@ def main():
             else:
                 print(f'- Setting fragments to: {args.fragments}')
                 save.resources.fragments = args.fragments
+                do_save = True
+
+        # Unlock Crew
+        if args.unlock_crew is not None:
+            warn_about_already_existing = True
+            if 'all' in args.unlock_crew:
+                warn_about_already_existing = False
+                args.unlock_crew = set(CREW_REAL.keys())
+            else:
+                # Normalize to the 'real' names
+                new_unlock = set()
+                for crew_name in args.unlock_crew:
+                    crew_info = CREW[crew_name]
+                    new_unlock.add(crew_info.name)
+                args.unlock_crew = new_unlock
+
+            # Figure out the current max level for current chars, which is
+            # what we'll use for the new char
+            max_level = 0
+            for crew_name in save.crew_list:
+                crew = save.crew[crew_name]
+                for job in crew.jobs.values():
+                    max_level = max(max_level, job.level)
+
+            # Loop through and unlock!
+            existing_crew_names = set(save.crew_list)
+            for crew_name in sorted(args.unlock_crew):
+                crew_info = CREW[crew_name]
+                if crew_info.name in existing_crew_names:
+                    if warn_about_already_existing:
+                        print(f'- {crew_info.label} is already unlocked, skipping')
+                    continue
+                print(f'- Unlocking crew member: {crew_info.label}')
+                save.unlock_crew(crew_info.name, max_level, flag_as_new=args.set_new_item)
                 do_save = True
 
         # Crew Level.  Args should be validated by now

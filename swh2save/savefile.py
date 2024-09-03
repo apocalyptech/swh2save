@@ -22,7 +22,7 @@ import enum
 import binascii
 
 from .datafile import Datafile
-from .gamedata import XP, JOBS
+from .gamedata import CREW, XP, JOBS
 
 
 class Serializable:
@@ -628,6 +628,29 @@ class Loadout(Chunk):
         return my_dict
 
 
+    @staticmethod
+    def create_new(name, items_by_id):
+        """
+        Creates a new loadout with just the name filled in.  You'll have to
+        fill in the remaining fields after creation.  The way this is
+        done at the moment is absurd.
+        """
+        # TODO: seriously, this is absurd and weird.
+        odf = Savefile('foo', do_write=True)
+        odf.write_chunk_header('CrLo')
+        odf.write_uint8(0)
+        odf.write_string(name)
+        odf.write_string(None)
+        odf.write_varint(3)
+        odf.write_string(None)
+        odf.write_string(None)
+        odf.write_string(None)
+        odf.write_string(None)
+        odf.write_uint32(0)
+        odf.seek(0)
+        return Loadout(odf, items_by_id)
+
+
 class Inventory(Chunk):
     """
     `Inve` chunk -- Inventory!
@@ -804,7 +827,9 @@ class ReDe(Chunk):
 
         # On my saves, ranges from 0-4.  Bigger values in general when
         # there are more things in the list, though that's not
-        # entirely predictive.
+        # entirely predictive.  I think it might have something to do with
+        # how many things can *possibly* be in the current pool, though
+        # eh...
         self.unknown = self.df.read_uint32()
 
 
@@ -1892,6 +1917,10 @@ class CrewStatus(Chunk):
         """
         # Clamp level to our max
         to_level = min(to_level, XP.max_level)
+
+        # The CLI supports passing in job names by their in-game names in addition to
+        # the "real" names, and that should all be normalized by the time it gets here,
+        # but there's no good reason not to support them here, too.
         if job_name not in JOBS:
             raise RuntimeError(f'Job "{job_name}" not found in gamedata structures')
         job_info = JOBS[job_name]
@@ -1958,6 +1987,10 @@ class CrewStatus(Chunk):
         """
         # Clamp XP to our max
         to_xp = min(to_xp, XP.max_xp)
+
+        # The CLI supports passing in job names by their in-game names in addition to
+        # the "real" names, and that should all be normalized by the time it gets here,
+        # but there's no good reason not to support them here, too.
         if job_name not in JOBS:
             raise RuntimeError(f'Job "{job_name}" not found in gamedata structures')
         job_info = JOBS[job_name]
@@ -1993,6 +2026,28 @@ class CrewStatus(Chunk):
                             new_job.level = level
                     new_jobs[new_job_name] = new_job
             self.jobs = new_jobs
+
+
+    @staticmethod
+    def create_new(name):
+        """
+        Creates a new character with just the name filled in.  You'll have to
+        fill in the remaining fields after creation.  The way this is
+        done at the moment is absurd.
+        """
+        # TODO: seriously, this is absurd and weird.
+        odf = Savefile('foo', do_write=True)
+        odf.write_chunk_header('Pers')
+        odf.write_uint8(2)
+        odf.write_string(name)
+        odf.write_uint8(0)
+        odf.write_uint8(0)
+        odf.write_varint(0)
+        odf.write_uint32(0)
+        odf.write_uint32(0)
+        odf.write_uint32(0)
+        odf.seek(0)
+        return CrewStatus(odf)
 
 
 class CrewController(Chunk):
@@ -2670,4 +2725,54 @@ class Savefile(Datafile, Serializable):
             ])
         my_dict['remaining_data'] = '(omitted)'
         return my_dict
+
+
+    def unlock_crew(self, crew_name, level, flag_as_new=True):
+        """
+        Unlock the specified crewmember, if they're not already unlocked.
+        The crew will be levelled up in their default job to the specified
+        `level`.  If `flag_as_new` is `True` (the default), the crew's new
+        hat will be flagged as New.
+        """
+        # We *should* have only been passed valid crew names by now, but there's
+        # no reason not to do the lookup anyway.
+        if crew_name not in CREW:
+            raise RuntimeError(f'Unknown crew member to unlock: {crew_name}')
+        crew_info = CREW[crew_name]
+
+        # One more sanity check for already-existing.  Inefficient since
+        # this is a list, not a set.
+        if crew_info.name in self.crew_list:
+            return
+
+        # Now do our work
+        self.header.crew.append(crew_info.name)
+        if crew_info.default_hat not in self.inventory.hats:
+            self.inventory.hats.append(crew_info.default_hat)
+            if flag_as_new:
+                self.inventory.new_hats.append(crew_info.default_hat)
+        loadout = Loadout.create_new(crew_info.name, self.inventory.items_by_id)
+        loadout.cur_hat = crew_info.default_hat
+        self.inventory.loadouts[crew_info.name] = loadout
+        self.crew_list.append(crew_info.name)
+        # This structure is still a bit of a mystery to me.  It actually looks
+        # like we could probably just leave it alone entirely and the game works.
+        # If we clear it out entirely (by unlocking all crew) but then *don't*
+        # set that `unknown` value to 0, the game will crash upon entering a bar
+        # which usually has crew available.  I guess I'm just contenting myself
+        # with that for now.
+        if self.rede is not None:
+            # Inefficient lookup since it's a list
+            if crew_info.name in self.rede.things:
+                self.rede.things.remove(crew_info.name)
+            # If we empty out the list, we need to do this too
+            if len(self.rede.things) == 0:
+                self.rede.unknown = 0
+        for shop in self.shops:
+            for idx in range(len(shop.available_crew)):
+                if shop.available_crew[idx] == crew_info.name:
+                    shop.available_crew[idx] = None
+        crew = CrewStatus.create_new(crew_info.name)
+        crew.job_level_to(crew_info.default_job.name, level)
+        self.crew.crew[crew_info.name] = crew
 

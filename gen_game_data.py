@@ -166,9 +166,10 @@ def main():
 
             class Crew(GameData):
 
-                def __init__(self, name, label, default_job):
+                def __init__(self, name, label, default_job, default_hat):
                     super().__init__(name, label)
                     self.default_job = default_job
+                    self.default_hat = default_hat
 
 
             class Upgrade(GameData):
@@ -368,6 +369,22 @@ def main():
                 print('', file=odf)
 
 
+            # Prep for crew: get their default hat
+            crew_hat_mapping = {}
+            with game_pak.open('Definitions/entities.crew.xml') as crew_xml:
+
+                root = ET.fromstring(crew_xml.read())
+                for child in root:
+                    name = child.attrib['Name']
+                    if name.startswith('crew_'):
+                        for inner_child in child:
+                            if inner_child.tag == 'Actor':
+                                for actor_child in inner_child:
+                                    if actor_child.tag == 'Hat':
+                                        crew_hat_mapping[name[5:]] = actor_child.text
+                                        break
+                                break
+
             # Then: crew
             with game_pak.open('Definitions/personas.xml') as persona_xml:
 
@@ -395,6 +412,7 @@ def main():
                     print(f"            '{name}',", file=odf)
                     print("            \"{}\",".format(quote_string(label)), file=odf)
                     print(f"            JOBS['{job}'],", file=odf)
+                    print(f"            '{crew_hat_mapping[name]}',", file=odf)
                     print("            ),", file=odf)
                 print('        }', file=odf)
                 print('', file=odf)

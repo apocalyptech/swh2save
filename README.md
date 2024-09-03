@@ -36,6 +36,7 @@ At time of writing, here's the stuff you can edit:
   - Key Items
   - Hats!
 - Revealing the full map
+- Unlocking Crew
 - Setting Crew Job XP
 - Spending Reserve XP
 - Refresh Crew/Equipment so they can be used again on the same day
