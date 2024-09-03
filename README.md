@@ -36,6 +36,8 @@ At time of writing, here's the stuff you can edit:
   - Key Items
   - Hats!
 - Revealing the full map
+- Setting Crew Job XP
+- Spending Reserve XP
 
 I may not be the best at keeping this README updated while still in
 development, so it's possible there'll be more stuff by the time you read

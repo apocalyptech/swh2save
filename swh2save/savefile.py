@@ -2661,5 +2661,6 @@ class Savefile(Datafile, Serializable):
         self._json_object_single(my_dict, [
             'crew',
             ])
+        my_dict['remaining_data'] = '(omitted)'
         return my_dict
 
