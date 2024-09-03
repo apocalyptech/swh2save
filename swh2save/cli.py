@@ -374,6 +374,24 @@ def main():
                 """,
             )
 
+    parser.add_argument('--spend-reserve-xp',
+            type=str,
+            action='append',
+            help="""
+                Assigns the specified character's Reserve XP on the specified job.
+                This arg requires two parts separated by colons: first, the
+                character ID (or `all`), and then the job ID (or `current` for the
+                crewmember's current job, or `default` for the crewmember's default
+                job).  For instance, to spend all of Daisy's reserve XP on the
+                Boomer job, use `daisy:boomer`.  To spend everyone's reserve XP
+                on the Engineer job, use `all:engineer`.  This argument can be
+                specified more than once to perform more than one action.  This may
+                leave some Reserve XP available if the target job reaches max level.
+                Specify `help` or `list` as the argument to show the valid character
+                and job IDs.
+                """,
+            )
+
     parser.add_argument('--add-upgrade',
             action=FlexiSetAction,
             help="""
@@ -748,9 +766,26 @@ def main():
                 try:
                     level = int(level)
                 except ValueError as e:
-                    parser.error(f'The level component in --crew-level must be `max` or a number from 0 to {len(XP)-1}')
-                if level < 0 or level+1 > len(XP):
-                    parser.error(f'The level component in --crew-level must be `max` or a number from 0 to {len(XP)-1}')
+                    parser.error(f'The level component in --crew-level must be `max` or a number from 0 to {XP.max_level}')
+                if level < 0 or level > XP.max_level:
+                    parser.error(f'The level component in --crew-level must be `max` or a number from 0 to {XP.max_level}')
+
+    # Reserve XP requires some extra fanciness too
+    if args.spend_reserve_xp is not None:
+        for reserve_arg in args.spend_reserve_xp:
+            if reserve_arg == 'list' or reserve_arg == 'help':
+                id_lookups['crew'].needs_dump = True
+                id_lookups['job'].needs_dump = True
+                break
+            parts = reserve_arg.split(':')
+            if len(parts) != 2:
+                parser.error('--spend-reserve-xp argument must contain two parts separated by colons (crew:job)')
+            crew, job = parts
+            id_lookups['crew'].check_specific(crew, '--spend-reserve-xp')
+            id_lookups['job'].check_specific(job, '--spend-reserve-xp')
+            # One inconsistency: we do *not* support `all` for the job here
+            if job == 'all':
+                parser.error('--spend-reserve-xp does not allow `all` for the job component')
 
     # Now loop through and display whatever needs to be displayed
     did_info_dump = False
@@ -1044,14 +1079,14 @@ def main():
 
                 # Get the level to set
                 if level == 'max':
-                    level = len(XP)-1
+                    level = XP.max_level
                 else:
                     level = int(level)
 
                 # Get the crew we're acting on
                 report_not_found = True
                 if crew_name == 'all':
-                    crew_names = list(save.crew.keys())
+                    crew_names = save.crew_list
                     report_not_found = False
                 else:
                     crew_names = [crew_name]
@@ -1110,6 +1145,91 @@ def main():
                                 print(f'- {crew_info.label}: Upgrading {job_info.label} to level {level}')
                             crew.job_level_to(job_info.name, level, allow_downlevel=args.allow_downlevel)
                             do_save = True
+
+        # Reserve XP.  Args should be validated by now
+        if args.spend_reserve_xp is not None:
+            for reserve_arg in args.spend_reserve_xp:
+                crew_name, job_name = reserve_arg.split(':')
+
+                # Get the crew we're acting on
+                report_not_found = True
+                if crew_name == 'all':
+                    crew_names = save.crew_list
+                    report_not_found = False
+                else:
+                    crew_names = [crew_name]
+
+                # Loop through crew
+                for crew_name in crew_names:
+                    crew_info = CREW[crew_name]
+                    if crew_info.name not in save.crew:
+                        if report_not_found:
+                            print(f'- {CREW[crew_name].label} has not been unlocked, not setting level')
+                        continue
+                    crew = save.crew[crew_info.name]
+
+                    if crew.reserve_xp == 0:
+                        print(f"- {crew_info.label} has no Reserve XP, skipping")
+                        continue
+
+                    if job_name == 'default':
+                        job_info = CREW[crew.name].default_job
+                    elif job_name == 'current':
+                        if crew_name in save.inventory.loadouts:
+                            cur_weapon = save.inventory.loadouts[crew.name].cur_weapon
+                            if cur_weapon == 0:
+                                # No weapon equipped; current job is the default
+                                job_info = CREW[crew_name].default_job
+                            else:
+                                if type(cur_weapon) == int:
+                                    raise RuntimeError(f"ERROR: {crew_info.label}'s current weapon (ID {cur_weapon}) was not found in savefile")
+                                if cur_weapon.name not in WEAPONS:
+                                    raise RuntimeError(f"ERROR: {crew_info.label}'s current weapon ({cur_weapon}) was not found in gamedata")
+                                job_info = WEAPONS[cur_weapon.name].job
+                        else:
+                            # No loadout?  I guess current job is the default
+                            job_info = CREW[crew_name].default_job
+                    else:
+                        job_info = JOBS[job_name]
+
+                    do_set = True
+                    cur_job_xp = 0
+                    if job_info.name in crew.jobs:
+                        job_status = crew.jobs[job_info.name]
+                        if job_status.xp >= XP.max_xp:
+                            print(f"- {crew_info.label}'s {job_info.label} skill is already at max level, skipping")
+                            do_set = False
+                        cur_job_xp = job_status.xp
+                        cur_job_level = job_status.level
+                    target_xp = cur_job_xp + crew.reserve_xp
+                    if target_xp > XP.max_xp:
+                        remaining_reserve_xp = target_xp - XP.max_xp
+                        target_xp = XP.max_xp
+                        spending_xp = crew.reserve_xp - remaining_reserve_xp
+                    else:
+                        remaining_reserve_xp = 0
+                        spending_xp = crew.reserve_xp
+                    target_level = 0
+                    for level in range(0, XP.max_level+1):
+                        if target_xp >= XP.level_to_xp[level]:
+                            target_level = level
+
+                    if do_set:
+                        report_parts = []
+                        report_parts.append(f'Spending {spending_xp} Reserve XP on {job_info.label}')
+                        if remaining_reserve_xp > 0:
+                            report_parts.append(f' ({remaining_reserve_xp} Reserve XP remains)')
+                        report_parts.append(f', to XP {target_xp}')
+                        if target_level == cur_job_level:
+                            report_parts.append(' (level unchanged)')
+                        else:
+                            report_parts.append(f' (level {cur_job_level} -> {target_level})')
+                        report = ''.join(report_parts)
+
+                        print(f'- {crew_info.label}: {report}')
+                        crew.set_job_xp(job_info.name, target_xp)
+                        crew.reserve_xp = remaining_reserve_xp
+                        do_save = True
 
         # New upgrades.  Note that all our keyitem mappings have already been computed
         if args.add_upgrade:

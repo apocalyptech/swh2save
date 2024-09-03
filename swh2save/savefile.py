@@ -1883,6 +1883,8 @@ class CrewStatus(Chunk):
         A fair bit of the logic in here is technically also done in the argument-validation
         routines on the CLI side, but that's fine.
         """
+        # Clamp level to our max
+        to_level = min(to_level, XP.max_level)
         if job_name not in JOBS:
             raise RuntimeError(f'Job "{job_name}" not found in gamedata structures')
         job_info = JOBS[job_name]
@@ -1940,6 +1942,50 @@ class CrewStatus(Chunk):
         """
         for job_name in CrewStatus.JOB_ORDER:
             self.job_level_to(job_name, to_level, allow_downlevel=allow_downlevel)
+
+
+    def set_job_xp(self, job_name, to_xp):
+        """
+        Sets the given job's XP to the specified level.  At the moment, this will
+        only allow *increasing* the XP.
+        """
+        # Clamp XP to our max
+        to_xp = min(to_xp, XP.max_xp)
+        if job_name not in JOBS:
+            raise RuntimeError(f'Job "{job_name}" not found in gamedata structures')
+        job_info = JOBS[job_name]
+        if job_name in self.jobs:
+            # Already have a job record for this job
+            job = self.jobs[job_name]
+            if job.xp == to_xp:
+                return
+            if job.xp > to_xp:
+                raise RuntimeError('set_job_xp does not currently support decreasing XP')
+            job.xp = to_xp
+            for level in range(job.level, XP.max_level+1):
+                if to_xp >= XP.level_to_xp[level]:
+                    job.level = level
+        else:
+            # Need a new job record for the job.  We're doing some shenanigans here to
+            # ensure that the jobs are stored in the same order the game would.  The
+            # alternative would be to do that in the save routine, but I think I'd rather
+            # have that complexity here, and that way the save routines would generate
+            # identical files even if the game changes up which order it writes stuff.
+            if to_xp == 0:
+                # Don't bother if the XP set was zero, though
+                return
+            new_jobs = {}
+            for new_job_name in CrewStatus.JOB_ORDER:
+                if new_job_name in self.jobs:
+                    new_jobs[new_job_name] = self.jobs[new_job_name]
+                elif new_job_name == job_name:
+                    new_job = JobStatus(new_job_name)
+                    new_job.xp = to_xp
+                    for level in range(0, XP.max_level+1):
+                        if to_xp >= XP.level_to_xp[level]:
+                            new_job.level = level
+                    new_jobs[new_job_name] = new_job
+            self.jobs = new_jobs
 
 
 class CrewController(Chunk):
