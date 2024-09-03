@@ -447,15 +447,25 @@ def main():
                 """,
             )
 
+    parser.add_argument('--unlock-personal-upgrades',
+            action='store_true',
+            help="""
+                Unlock all avialble personal upgrades from the Personal Upgrade station
+                on the sub.  Note that only the upgrades for the currently-unlocked crew
+                will be unlocked, and the second upgrade may not be available until the
+                necessary sub upgrade has also been acquired.
+                """,
+            )
+
     parser.add_argument('--unlock-upgrades',
             action='store_true',
             help="""
-                Unlock all upgrades.  This is equivalent to specifying each of the three
+                Unlock all upgrades.  This is equivalent to specifying each of the four
                 individual `--unlock-*-upgrades` options.  This will also unlock Key Items as
                 necessary.  Note that on the main Sub Upgrades console, upgrades you
                 haven't "properly" revealed through quest progress won't show up in the list
-                on the console, but their effects will still be active.  NOTE: this does not
-                yet include any upgrades from the Personal Upgrade console.
+                on the console, but their effects will still be active.  For personal upgrades,
+                only the currently-unlocked crew will have their upgrades enabled.
                 """,
             )
 
@@ -657,6 +667,7 @@ def main():
     if args.unlock_upgrades:
         args.add_upgrade |= set(UPGRADES.keys())
         user_add_upgrade = True
+        args.unlock_personal_upgrades = True
     else:
         for upgrade in UPGRADES.values():
             match upgrade.category:
@@ -1255,6 +1266,20 @@ def main():
                 do_save = True
             else:
                 print('  - No crew/equipment needed refreshing!')
+
+        # Personal Upgrades
+        if args.unlock_personal_upgrades:
+            print('- Unlocking all available personal upgrades')
+            did_upgrade = False
+            for crew_name in save.crew_list:
+                crew = save.crew[crew_name]
+                if crew.personal_upgrade_count < 2:
+                    crew.personal_upgrade_count = 2
+                    did_upgrade = True
+            if did_upgrade:
+                do_save = True
+            else:
+                print('  - All available personal upgrades were already unlocked!')
 
         # New upgrades.  Note that all our keyitem mappings have already been computed
         if args.add_upgrade:

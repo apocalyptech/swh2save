@@ -28,7 +28,7 @@ At time of writing, here's the stuff you can edit:
   - Sub Upgrade panel
   - Job Upgrade panel
   - Various other item-based upgrades (sub dive/ram, etc)
-  - *(Personal Upgrades aren't in yet!)*
+  - Personal Upgrades
 - Inventory
   - Weapons
   - Equippable Gear
