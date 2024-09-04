@@ -59,6 +59,7 @@ def main():
 
     parser = argparse.ArgumentParser(
             description='Generate gamedata.py for swh2save',
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
             )
 
     parser.add_argument('-g', '--gamedir',
@@ -73,10 +74,22 @@ def main():
             help='The language to use for pulling in text labels',
             )
 
+    parser.add_argument('-o', '--output-dir',
+            type=str,
+            default='swh2save',
+            help='The directory to output gamedata.py to',
+            )
+
     args = parser.parse_args()
     
-    core_dir = os.path.join(args.gamedir, 'Bundle', 'Core')
+    if not os.path.exists(args.output_dir):
+        print(f'ERROR: Output directory {args.output_dir} not found.  Note that this utility')
+        print('is only really meant to be run by someone developing the game, and generates')
+        print('the gamedata.py data script.  You\'re unlikely to need it yourself!')
+        print('')
+        sys.exit(1)
 
+    core_dir = os.path.join(args.gamedir, 'Bundle', 'Core')
     output_file = os.path.join('swh2save', 'gamedata.py')
 
     with open(output_file, 'w') as odf:

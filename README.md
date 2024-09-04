@@ -64,9 +64,7 @@ savegames; they are likely to end up corrupted even if the process finishes.
 TODO
 ====
 
-- Pull `gen_game_data.py` into the module so it can be distributed more
-  sensibly
-- Pull `string_finder.py` into the module as well (less important but whatever)
+- Pull `string_finder.py` into the module
 - Add arg to write out savefiles with all strings expanded (would also still
   like to determine more definitively if such files will be read by the game).
 - Walk through a few savefiles with the help of `string_finder.py` and/or
