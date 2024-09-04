@@ -319,7 +319,12 @@ def main():
             description='SteamWorld Heist II CLI Save Editor',
             )
 
-    mode = parser.add_mutually_exclusive_group(required=True)
+    mode_section = parser.add_argument_group(
+            'Operational Modes',
+            'These are the main functions you can use for a savegame.  At least one is required.',
+            )
+
+    mode = mode_section.add_mutually_exclusive_group(required=True)
 
     mode.add_argument('-s', '--show-ids',
             action='store_true',
@@ -343,52 +348,78 @@ def main():
 
     mode.add_argument('-j', '--json',
             type=str,
-            help='JSON-formatted save dump',
+            help="""
+                Export the savegame in a custom JSON format.  Note that this is incomplete!  A valid
+                savegame cannot be reconstructed from a JSON output.  It's more just intended for
+                debugging.  Any editing options will be ignored; this will only convert an on-disk
+                save.
+                """,
             )
 
-    parser.add_argument('-v', '--verbose',
+    mode_section.add_argument('filename',
+            type=str,
+            nargs='?',
+            help='Savefile to open.  This is required for all operational modes except -s/--show-ids',
+            )
+
+    format_section = parser.add_argument_group(
+            'Output Formatting',
+            'Options which alter the output of the app.',
+            )
+
+    format_section.add_argument('-v', '--verbose',
             action='store_true',
             help='Show extra information when listing savegame contents, performing edits, and outputting JSON',
             )
 
-    parser.add_argument('-d', '--debug',
+    format_section.add_argument('-d', '--debug',
             action='store_true',
             help='Extra debugging info (at the moment just some extra data dumps while --check is active)',
             )
 
-    parser.add_argument('-1', '--single_column',
+    format_section.add_argument('-1', '--single_column',
             dest='single_column',
             action='store_true',
             help='Force the verbose view to have one item per line instead of trying to use columns',
             )
 
-    parser.add_argument('--no-warning',
+    format_section.add_argument('--no-warning',
             dest='show_warning',
             action='store_false',
             help='Suppress the warning about potential savefile corruption',
             )
 
-    parser.add_argument('-f', '--force',
+    format_section.add_argument('-f', '--force',
             action='store_true',
             help='Overwrite the output filename without prompting, if it already exists',
             )
 
-    parser.add_argument('--day',
+    basic_section = parser.add_argument_group(
+            'Basic Options',
+            'Basic Savegame data',
+            )
+
+    basic_section.add_argument('--day',
             type=int,
             help='Sets the current day',
             )
 
-    parser.add_argument('--fragments',
+    basic_section.add_argument('--fragments',
             type=int,
             help='Sets the number of fragments',
             )
 
-    parser.add_argument('--water',
+    basic_section.add_argument('--water',
             type=int,
             help='Sets the amount of water (money)',
             )
 
-    parser.add_argument('--unlock-crew',
+    crew_section = parser.add_argument_group(
+            'Crew / Job Levelling',
+            'Options to deal with crew, and job levelling.',
+            )
+
+    crew_section.add_argument('--unlock-crew',
             action=FlexiSetAllAction,
             help="""
                 Unlocks the specified crew members.  Can be specified more than once,
@@ -398,7 +429,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--crew-level',
+    crew_section.add_argument('--crew-level',
             type=str,
             action='append',
             help="""
@@ -418,7 +449,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--allow-downlevel',
+    crew_section.add_argument('--allow-downlevel',
             action='store_true',
             help="""
                 Ordinarily when setting crew level/XP, this utility won't move any
@@ -428,7 +459,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--spend-reserve-xp',
+    crew_section.add_argument('--spend-reserve-xp',
             type=str,
             action='append',
             help="""
@@ -446,12 +477,17 @@ def main():
                 """,
             )
 
-    parser.add_argument('--refresh-crew',
+    crew_section.add_argument('--refresh-crew',
             action='store_true',
             help='Refreshes all crew/equipment so they can be used again on the current day.',
             )
 
-    parser.add_argument('--add-upgrade',
+    upgrade_section = parser.add_argument_group(
+            'Upgrades',
+            'Options to deal with various upgrades',
+            )
+
+    upgrade_section.add_argument('--add-upgrade',
             action=FlexiSetAction,
             help="""
                 Unlock specific upgrades.  This will also unlock Key Items as
@@ -460,7 +496,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--remove-upgrade',
+    upgrade_section.add_argument('--remove-upgrade',
             action=FlexiSetAction,
             help="""
                 Removes specific upgrades.  Will also remove the matching Key Items if
@@ -471,7 +507,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-main-upgrades',
+    upgrade_section.add_argument('--unlock-main-upgrades',
             action='store_true',
             help="""
                 Unlock all upgrades ordinarily unlocked by the main Sub Upgrades console
@@ -483,7 +519,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-item-upgrades',
+    upgrade_section.add_argument('--unlock-item-upgrades',
             action='store_true',
             help="""
                 Unlock all upgrades acquired by items, often as part of quest
@@ -493,7 +529,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-job-upgrades',
+    upgrade_section.add_argument('--unlock-job-upgrades',
             action='store_true',
             help="""
                 Unlock all upgrades ordinarily unlocked by the Job Upgrade station on
@@ -501,7 +537,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-personal-upgrades',
+    upgrade_section.add_argument('--unlock-personal-upgrades',
             action='store_true',
             help="""
                 Unlock all avialble personal upgrades from the Personal Upgrade station
@@ -511,7 +547,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-upgrades',
+    upgrade_section.add_argument('--unlock-upgrades',
             action='store_true',
             help="""
                 Unlock all upgrades.  This is equivalent to specifying each of the four
@@ -523,7 +559,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--add-key-item',
+    upgrade_section.add_argument('--add-key-item',
             action=FlexiSetAction,
             help="""
                 Unlock specific Key Items.  These are often tied to ship upgrades, and
@@ -533,7 +569,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--remove-key-item',
+    upgrade_section.add_argument('--remove-key-item',
             action=FlexiSetAction,
             help="""
                 Removes specific Key Items.  Will also remove the matching sub upgrades if
@@ -543,7 +579,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-key-items',
+    upgrade_section.add_argument('--unlock-key-items',
             action='store_true',
             help="""
                 Unlock all Key Items.  These are often tied to ship upgrades, and the game
@@ -552,7 +588,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-sub-abilities',
+    upgrade_section.add_argument('--unlock-sub-abilities',
             action='store_true',
             help="""
                 Unlocks the upgrades and key items necessary to give the sub its full suite
@@ -563,7 +599,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-gears',
+    upgrade_section.add_argument('--unlock-gears',
             action='store_true',
             help="""
                 Unlocks the seven celestial gear upgrades (generally acquired when you
@@ -572,7 +608,12 @@ def main():
                 """,
             )
 
-    parser.add_argument('--add-hat',
+    inv_section = parser.add_argument_group(
+            'Inventory',
+            'Various inventory management options',
+            )
+
+    inv_section.add_argument('--add-hat',
             action=FlexiSetAction,
             help="""
                 Unlock specific hats.  Can be specified more than once, and/or
@@ -581,12 +622,12 @@ def main():
                 """,
             )
 
-    parser.add_argument('--unlock-hats',
+    inv_section.add_argument('--unlock-hats',
             action='store_true',
             help='Unlock all hats',
             )
 
-    parser.add_argument('--set-leeway-hat',
+    inv_section.add_argument('--set-leeway-hat',
             type=str,
             help="""
                 Sets the hat equipped on Capt. Leeway.  Will likely be overwritten during
@@ -595,7 +636,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--add-ship-equipment',
+    inv_section.add_argument('--add-ship-equipment',
             action=FlexiListAction,
             help="""
                 Unlock specific ship equipment.  Can be specified more than once, and/or
@@ -604,7 +645,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--add-utility',
+    inv_section.add_argument('--add-utility',
             action=FlexiListAction,
             help="""
                 Unlock specific utility equipment.  Can be specified more than once, and/or
@@ -613,7 +654,7 @@ def main():
                 """,
             )
 
-    parser.add_argument('--add-weapon',
+    inv_section.add_argument('--add-weapon',
             action=FlexiListAction,
             help="""
                 Unlock specific weapons.  Can be specified more than once, and/or
@@ -622,22 +663,22 @@ def main():
                 """,
             )
 
-    parser.add_argument('--endgame-ship-pack',
+    inv_section.add_argument('--endgame-ship-pack',
             action='store_true',
             help='Adds a collection of endgame ship equipment to your inventory',
             )
 
-    parser.add_argument('--endgame-weapon-pack',
+    inv_section.add_argument('--endgame-weapon-pack',
             action='store_true',
             help='Adds a collection of endgame weapons to your inventory',
             )
 
-    parser.add_argument('--endgame-utility-pack',
+    inv_section.add_argument('--endgame-utility-pack',
             action='store_true',
             help='Adds a collection of endgame utility (equippable) items to your inventory',
             )
 
-    parser.add_argument('--endgame-pack',
+    inv_section.add_argument('--endgame-pack',
             action='store_true',
             help="""
                 Adds a collection of endgame ship equipment, weapons, and equippable utility
@@ -646,13 +687,18 @@ def main():
                 """,
             )
 
-    parser.add_argument('--no-new-items',
+    inv_section.add_argument('--no-new-items',
             dest='set_new_item',
             action='store_false',
             help="When adding new items/hats, don't mark them as 'new'",
             )
 
-    map_group = parser.add_mutually_exclusive_group()
+    map_section = parser.add_argument_group(
+            'World Map',
+            'Options dealing with the world map',
+            )
+
+    map_group = map_section.add_mutually_exclusive_group()
 
     map_group.add_argument('--reveal-map',
             action='store_true',
@@ -662,12 +708,6 @@ def main():
     map_group.add_argument('--hide-map',
             action='store_true',
             help='Fully hides the world map (respawns clouds)',
-            )
-
-    parser.add_argument('filename',
-            type=str,
-            nargs='?',
-            help='Savefile to open.  This is required for all operational modes except -s/--show-ids',
             )
 
     args = parser.parse_args()
