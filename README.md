@@ -61,6 +61,29 @@ cope with mid-mission savegames.  I believe it'll probably fail before it's even
 had a chance to read those in, but definitely don't use the utility on mid-mission
 savegames; they are likely to end up corrupted even if the process finishes.
 
+TODO
+====
+
+- Rename `-i`/`--item-info` arg to something more sensible, and make sure it
+  can be used without a filename
+- Pull `gen_game_data.py` into the module so it can be distributed more
+  sensibly
+- Pull `string_finder.py` into the module as well (less important but whatever)
+- Add arg to write out savefiles with all strings expanded (would also still
+  like to determine more definitively if such files will be read by the game).
+- Walk through a few savefiles with the help of `string_finder.py` and/or
+  string-expanded saves to see if there are string refs I missed, especially
+  early on before I really understood that format.
+- Possibly pare down our processing of the skipped bit -- just pull out our
+  map data and then treat the rest as a blob.  Probably no need to do string
+  processing on that at all.
+- Crew levelling could use a bit more thorough testing
+- Grab a few in-mission saves; I'm pretty sure we error out trying to read them.
+  I have no real interest in trying to actually *parse* the in-mission bits,
+  but perhaps we could at least detect them more gracefully and fail out with
+  a useful message to the user.
+- README docs!
+
 Format Info
 ===========
 
