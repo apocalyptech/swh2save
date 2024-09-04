@@ -64,8 +64,6 @@ savegames; they are likely to end up corrupted even if the process finishes.
 TODO
 ====
 
-- Rename `-i`/`--item-info` arg to something more sensible, and make sure it
-  can be used without a filename
 - Pull `gen_game_data.py` into the module so it can be distributed more
   sensibly
 - Pull `string_finder.py` into the module as well (less important but whatever)

@@ -321,6 +321,11 @@ def main():
 
     mode = parser.add_mutually_exclusive_group(required=True)
 
+    mode.add_argument('-s', '--show-ids',
+            action='store_true',
+            help='Dump a list of item IDs/strings that can be used with this app (crew, equipment, etc)',
+            )
+
     mode.add_argument('-l', '--list',
             action='store_true',
             help='Just show information about the savegame',
@@ -334,12 +339,6 @@ def main():
     mode.add_argument('-o', '--output',
             type=str,
             help='Output filename (required if making changes)',
-            )
-
-    # TODO: We shouldn't have to specify a filename when using this one
-    mode.add_argument('-i', '--item-info',
-            action='store_true',
-            help='Dump a list of item strings that can be used with this app',
             )
 
     mode.add_argument('-j', '--json',
@@ -667,8 +666,8 @@ def main():
 
     parser.add_argument('filename',
             type=str,
-            nargs=1,
-            help='Savefile to open',
+            nargs='?',
+            help='Savefile to open.  This is required for all operational modes except -s/--show-ids',
             )
 
     args = parser.parse_args()
@@ -677,8 +676,10 @@ def main():
     ### Some basic argument cleanup
     ###
 
-    # Just a single filename
-    args.filename = args.filename[0]
+    # Require a filename *unless* we're showing IDs
+    if not args.show_ids:
+        if args.filename is None:
+            parser.error('filename is required unless using -s/--show-ids')
 
     # Normalize the columns arg for print_columns
     if args.single_column:
@@ -828,7 +829,7 @@ def main():
             }
 
     # Basic arg checking
-    if not args.item_info:
+    if not args.show_ids:
         for id_lookup in id_lookups.values():
             id_lookup.check_args(args)
 
@@ -873,7 +874,7 @@ def main():
     # Now loop through and display whatever needs to be displayed
     did_info_dump = False
     for id_lookup in id_lookups.values():
-        did_this_dump = id_lookup.show(force=args.item_info)
+        did_this_dump = id_lookup.show(force=args.show_ids)
         did_info_dump = did_info_dump or did_this_dump
     if did_info_dump:
         return
