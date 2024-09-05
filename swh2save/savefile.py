@@ -2651,24 +2651,6 @@ class Savefile(Datafile, Serializable):
         # out again, and string references will *never* go beyond the beginning
         # of the skippable section.  Likewise, any string references *after*
         # that point can't point inside the skippable area.
-        #
-        # We're basically assuming in here that the data length of the skippable
-        # section is three bytes.  The smallest value I've seen on my savegames is
-        # 201474 (82 A6 0C) and the largest has been 386860 (AC CE 17).  Given that
-        # range, I'm doubtful it'll ever be anything but three bytes (except when
-        # it's 0, which is a special case).
-        #
-        # TODO: Just write out the skippable section separately, compute the
-        # length, and write them both directly, without having to assume that
-        # `shops_offset` is 3 bytes.
-        #
-        # (The main reason that's not already done is I hadn't realized at first
-        # that the string handling is totally separate in here, so I thought there
-        # was technically the potential for cascading length changes if the data
-        # hit specific edge cases.  I'd been meaning to expand this to iteratively
-        # go through the possibilities, and had just hardcoded the three-bytes
-        # version first 'cause that was temporarily easiest.  Since the strings
-        # *are* totally isolated, though, it's rather silly.)
 
         if self.shops_offset == 0:
             # If it's zero, we can skip all this nonsense
@@ -2677,10 +2659,9 @@ class Savefile(Datafile, Serializable):
             odf.write_uint8(self.skipped_unknown_zero_2)
 
         else:
-            # Write a "junk" three-byte value
-            shops_offset_loc = odf.tell()
-            odf.write(b'\x00\x00\x00')
+            # Set up a new file to write to
             skipped_data_start_loc = odf.tell()
+            skippable_df = Savefile('virtual', do_write=True)
 
             ### -------------------
             ### SKIPPABLE NEW BEGIN
@@ -2688,10 +2669,10 @@ class Savefile(Datafile, Serializable):
             ### See the comments up in the reading section re: this
 
             # World Data
-            self.world_data.write_to(odf)
+            self.world_data.write_to(skippable_df)
 
             # Skipped Data
-            odf.write(self.skipped_data)
+            skippable_df.write(self.skipped_data)
 
             ### -----------------
             ### SKIPPABLE NEW END
@@ -2703,37 +2684,29 @@ class Savefile(Datafile, Serializable):
             ### See the comments up in the reading section re: this
 
             ## Data that we can skip uses completely isolated string handling
-            #odf.set_skipped_string_registry()
+            ## (actually, since converting this to skippable_df, we probably
+            ## wouldn't actually need to do this, eh?)
+            #skippable_df.set_skipped_string_registry()
 
             ## Write the remaining data
-            #self.world_data.write_to(odf)
+            #self.world_data.write_to(skippable_df)
             ##for component_str, component in self.components:
-            ##    odf.write_string(component_str)
-            ##    component.write_to(odf)
-            #self.skipped_data.write_to(odf)
+            ##    skippable_df.write_string(component_str)
+            ##    component.write_to(skippable_df)
+            #self.skipped_data.write_to(skippable_df)
 
             ## Flip back to the default string registry
-            #odf.set_default_string_registry()
+            #skippable_df.set_default_string_registry()
 
             ### ------------------
             ### SKIPPABLE ORIG END
             ### ------------------
 
-            # Compute the proper shops_offset
-            skipped_data_end_loc = odf.tell()
-            self.shops_offset = skipped_data_end_loc - skipped_data_start_loc
-
-            # This bit is absurd.  Anyway, write the varint and check its
-            # length.  Then write the proper value out to its location and seek
-            # back to where we're supposed to be.
-            test_odf = Savefile('foo', do_write=True)
-            test_odf.write_varint(self.shops_offset)
-            if test_odf.tell() != 3:
-                raise RuntimeError(f'Unsupported shops_offset data length: {test_odf.tell()}')
-            test_odf.seek(0)
-            odf.seek(shops_offset_loc)
-            odf.write(test_odf.read())
-            odf.seek(skipped_data_end_loc)
+            # The offset should just be the length of the data we just wrote
+            self.shops_offset = skippable_df.tell()
+            odf.write_varint(self.shops_offset)
+            skippable_df.seek(0)
+            odf.write(skippable_df.read())
 
             # Now post-skipped data which still relies on having
             # a nonzero shops_offset.
