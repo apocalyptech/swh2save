@@ -77,8 +77,6 @@ TODO
   but perhaps we could at least detect them more gracefully and fail out with
   a useful message to the user.
 - README docs!
-- Explicit arg to write debug savefile when our rewrite sanity check fails,
-  rather than just blindly writing `debug_out.sav`
 - Put in a *sensible* way to create new Chunk objects; my current implementation
   makes that super awkward.
 - Finish parsing the remainder of the file.  I actually came across a scenario

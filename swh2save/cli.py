@@ -373,11 +373,6 @@ def main():
             help='Show extra information when listing savegame contents, performing edits, and outputting JSON',
             )
 
-    format_section.add_argument('-d', '--debug',
-            action='store_true',
-            help='Extra debugging info (at the moment just some extra data dumps while --check is active)',
-            )
-
     format_section.add_argument('-1', '--single_column',
             dest='single_column',
             action='store_true',
@@ -461,6 +456,26 @@ def main():
                     if now other changes have been queued up.
                     """,
                 )
+
+    dev_section = parser.add_argument_group(
+            'Development Options',
+            'Some extra options only really useful for developers of this app',
+            )
+
+    dev_section.add_argument('-d', '--debug',
+            action='store_true',
+            help='Extra debugging info (at the moment just some extra data dumps while --check is active)',
+            )
+
+    dev_section.add_argument('-e', '--error-save-to',
+            type=str,
+            help="""
+                If the app is unable to write an identical file to the loaded savegame, this option
+                will specify a filename to write our reconstructed file to, so it can be compared to
+                the original to help figure out where the processing went wrong.  Only really useful
+                to a developer of this app.
+                """,
+            )
 
     basic_section = parser.add_argument_group(
             'Basic Options',
@@ -1052,7 +1067,10 @@ def main():
     ###
 
     # Load in the savefile
-    save = Savefile(args.filename)
+    save = Savefile(args.filename,
+            error_save_to=args.error_save_to,
+            force_overwrite=args.force,
+            )
 
     # Now decide what to do.  First up: listing contents!
     if args.list:

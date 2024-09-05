@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+import os
 import re
 import abc
 import enum
@@ -2394,7 +2395,7 @@ class Savefile(Datafile, Serializable):
     MAX_VERSION = 1
 
 
-    def __init__(self, filename, do_write=False):
+    def __init__(self, filename, do_write=False, error_save_to=None, force_overwrite=False):
         super().__init__(filename, do_write=do_write)
         if not do_write:
             self.read_and_parse()
@@ -2405,9 +2406,20 @@ class Savefile(Datafile, Serializable):
             test.seek(0)
             test_data = test.read()
             if self.data != test_data:
-                with open('debug_out.sav', 'wb') as odf:
-                    odf.write(test_data)
-                raise RuntimeError('Could not reconstruct an identical savefile, aborting!')
+                extra = ''
+                if error_save_to is not None:
+                    do_write = True
+                    if not force_overwrite and os.path.exists(error_save_to):
+                        print(f'WARNING: Error dump target {error_save_to} already exists.')
+                        response = input('Overwrite (y/N)? ').strip().lower()
+                        if response == '' or response[0] != 'y':
+                            print('Not writing error dump file')
+                            do_write = False
+                    if do_write:
+                        with open(error_save_to, 'wb') as odf:
+                            odf.write(test_data)
+                        extra = f' (Wrote error dump file to: {error_save_to})'
+                raise RuntimeError(f'Could not reconstruct an identical savefile, aborting!{extra}')
 
 
     def _read_and_parse(self):
