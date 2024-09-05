@@ -1202,6 +1202,10 @@ class BehaviorState(Chunk):
     `Beha` chunk.  Behavior States, it seems.  In the game data, these seem
     to relate to enemy ships on the map, which would make sense given where it's
     stored in the savegame.
+
+    NOTE: This class is no longer used since I pared down what data WorldData
+    reads in.  It's left here in case I decide to start parsing more of the
+    skippable section again, though.
     """
 
     def __init__(self, df):
@@ -1270,6 +1274,10 @@ class Entities(Chunk):
     `ECSD` chunk.  I think this is defining entities on the map.
     The "wm_*" prefix on the entity names found in here almost certainly
     imply "world map."
+
+    NOTE: This class is no longer used since I pared down what data WorldData
+    reads in.  It's left here in case I decide to start parsing more of the
+    skippable section again, though.
     """
 
     def __init__(self, df):
@@ -1349,46 +1357,44 @@ class WorldData(Chunk):
         for _ in range(num_cloud_data):
             self.cloud_data.append(WorldCloudData(self.df))
 
-        # TODO: So.  The only actual data I care about in here is the
-        # cloud data above, and this section of the file is in the "skippable"
-        # section which uses a completely different string registry.  Cloud
-        # data doesn't contain any strings, so if I wanted, I could just skip
-        # everything else, and then have a much simpler skipped-section
-        # handling.  There'd be no need to worry about strings at all; just
-        # save the raw data and the slap it back in!  Not sure if I want
-        # to do that or not.
+        ### --------------------
+        ### SKIPPABLE ORIG BEGIN
+        ### --------------------
+        ### Original processing we used to do, which I don't actually
+        ### care about.  Omitting it lets us simplify our skipped-data
+        ### handling.  See the comments in the main Savefile class's
+        ### read routines for more details.
 
-        # I'm pretty sure that the stuff below belongs here in the PWDT
-        # chunk, since the "behaviors" seem to just be for overworld
-        # enemies, and the Entities processing seems to be similarly map-
-        # related.  We don't actually *care* about anything beyond the
-        # cloud map data, for save-editor purposes, and once we're
-        # through with this chunk, the main processing ends up skipping
-        # a bunch.  So we could probably comment the rest of this file
-        # and be fine.  Still, since I've already mapped it out, it may
-        # as well stay.
+        ## I'm pretty sure that the stuff below belongs here in the PWDT
+        ## chunk, since the "behaviors" seem to just be for overworld
+        ## enemies, and the Entities processing seems to be similarly map-
+        ## related.
 
-        # I *think* that these are Entity IDs, as defined in the later
-        # ECSD chunk.  I have not confirmed as such, though.  (And I
-        # don't know what these entities' presence in this list
-        # signifies.)
-        self.unknown_entity_ids = []
-        num_unknown_entity_ids = self.df.read_varint()
-        for _ in range(num_unknown_entity_ids):
-            self.unknown_entity_ids.append(self.df.read_varint())
+        ## I *think* that these are Entity IDs, as defined in the later
+        ## ECSD chunk.  I have not confirmed as such, though.  (And I
+        ## don't know what these entities' presence in this list
+        ## signifies.)
+        #self.unknown_entity_ids = []
+        #num_unknown_entity_ids = self.df.read_varint()
+        #for _ in range(num_unknown_entity_ids):
+        #    self.unknown_entity_ids.append(self.df.read_varint())
 
-        # No clue what's up with these; there are some patterns to be seen,
-        # but they remain pretty opaque.  Does seem to be twelve bytes quite
-        # consistently, though
-        self.unknown_end_bytes = []
-        for _ in range(12):
-            self.unknown_end_bytes.append(self.df.read_uint8())
+        ## No clue what's up with these; there are some patterns to be seen,
+        ## but they remain pretty opaque.  Does seem to be twelve bytes quite
+        ## consistently, though
+        #self.unknown_end_bytes = []
+        #for _ in range(12):
+        #    self.unknown_end_bytes.append(self.df.read_uint8())
 
-        # Behavior state
-        self.behavior_state = BehaviorState(self.df)
+        ## Behavior state
+        #self.behavior_state = BehaviorState(self.df)
 
-        # World Map Entities
-        self.entities = Entities(self.df)
+        ## World Map Entities
+        #self.entities = Entities(self.df)
+
+        ### ------------------
+        ### SKIPPABLE ORIG END
+        ### ------------------
 
 
     def _write_to(self, odf):
@@ -1397,13 +1403,22 @@ class WorldData(Chunk):
         odf.write_varint(len(self.cloud_data))
         for data in self.cloud_data:
             data.write_to(odf)
-        odf.write_varint(len(self.unknown_entity_ids))
-        for entity_id in self.unknown_entity_ids:
-            odf.write_varint(entity_id)
-        for value in self.unknown_end_bytes:
-            odf.write_uint8(value)
-        self.behavior_state.write_to(odf)
-        self.entities.write_to(odf)
+
+        ### --------------------
+        ### SKIPPABLE ORIG BEGIN
+        ### --------------------
+
+        #odf.write_varint(len(self.unknown_entity_ids))
+        #for entity_id in self.unknown_entity_ids:
+        #    odf.write_varint(entity_id)
+        #for value in self.unknown_end_bytes:
+        #    odf.write_uint8(value)
+        #self.behavior_state.write_to(odf)
+        #self.entities.write_to(odf)
+
+        ### ------------------
+        ### SKIPPABLE ORIG END
+        ### ------------------
 
 
     def _to_json(self, verbose=False):
@@ -1414,21 +1429,31 @@ class WorldData(Chunk):
         self._json_object_arr(my_dict, [
             'cloud_data',
             ], verbose)
-        # Munging a bit...
-        if verbose:
-            self._json_simple(my_dict, [
-                'unknown_entity_ids',
-                ])
-        else:
-            my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
-            my_dict['unknown_entity_ids'] = '(omitted)'
-        self._json_simple(my_dict, [
-            'unknown_end_bytes',
-            ])
-        self._json_object_single(my_dict, [
-            'behavior_state',
-            'entities',
-            ], verbose)
+
+        ### --------------------
+        ### SKIPPABLE ORIG BEGIN
+        ### --------------------
+
+        ## Munging a bit...
+        #if verbose:
+        #    self._json_simple(my_dict, [
+        #        'unknown_entity_ids',
+        #        ])
+        #else:
+        #    my_dict['num_unknown_entity_ids'] = len(self.unknown_entity_ids)
+        #    my_dict['unknown_entity_ids'] = '(omitted)'
+        #self._json_simple(my_dict, [
+        #    'unknown_end_bytes',
+        #    ])
+        #self._json_object_single(my_dict, [
+        #    'behavior_state',
+        #    'entities',
+        #    ], verbose)
+
+        ### ------------------
+        ### SKIPPABLE ORIG END
+        ### ------------------
+
         return my_dict
 
 
@@ -2448,56 +2473,91 @@ class Savefile(Datafile, Serializable):
         # array near the end of the file.  This skips over the map data, behavior
         # states, world-map entities, a whole series of Component dumps which take
         # up more than 50% of the file, and Lua variable state.
-        self.pbar_offset = self.read_varint()
-        self.pbar_start_loc = self.tell() + self.pbar_offset
+        self.shops_offset = self.read_varint()
+        self.pbar_start_loc = self.tell() + self.shops_offset
 
-        # If pbar_offset is zero, we end up skipping right to the PeCo chunks, otherwise
+        # If shops_offset is zero, we end up skipping right to the PeCo chunks, otherwise
         # we're digging a bit into it.
-        if self.pbar_offset > 0:
+        if self.shops_offset > 0:
 
             # A few values we only have with a zero offset
             self.skipped_unknown_zero_1 = None
             self.skipped_unknown_zero_2 = None
 
-            # The skippable section uses a totally isolated string registry
-            self.set_skipped_string_registry()
+            ### -------------------
+            ### SKIPPABLE NEW BEGIN
+            ### -------------------
+            ### This is the new handling for the skippable section.  WorldData now
+            ### only reads in the initial data, which has no strings.  Since string
+            ### handling in the skippable area is totally isolated from the rest of
+            ### the file, we can just read the remaining data as one big set of
+            ### bytes and be done with it.  The original (more complex) processing
+            ### is commented below.
+            ###
 
             # World Data
-            # TODO: I actually kind of suspect that *all* the data in this if statement
-            # belongs inside WorldData.  Hrm.
             self.world_data = WorldData(self)
 
-            # Then, we have, apparently, always 70 components, composed of
-            # a string followed by an ECTa chunk.  I don't see anything
-            # immediately which seems to provide that number, though I admit
-            # I didn't look long.  We're just skipping these for now, since
-            # pbar_offset lets us skip right over, and I'd otherwise have to
-            # start parsing 70 unique serialization formats.
-            #self.components = []
-            #for _ in range(70):
-            #    component_str = self.df.read_string()
-            #    component = Component(self.df)
-            #    self.components.append((component_str, component))
+            # Skipped Data
+            remaining_skip_len = self.pbar_start_loc - self.tell()
+            self.skipped_data = self.read(remaining_skip_len)
 
-            # Now just go ahead and skip the rest of the inbetween
-            # data that our pbar_offset lets us ignore
-            self.skipped_data = UnparsedData(self, self.pbar_start_loc)
+            ### -----------------
+            ### SKIPPABLE NEW END
+            ### -----------------
 
-            # Flip back to the default string registry
-            self.set_default_string_registry()
+            ### --------------------
+            ### SKIPPABLE ORIG BEGIN
+            ### --------------------
+            ### This is the original processing I was doing while reading in this
+            ### section, which turned out to be more complicated than we need.
+            ### I'd added in some code to handle the isolated strings, and also
+            ### parsed a ways into the section more than we cared (which did involve
+            ### reading strings). This all *works* but there's no reason to do it,
+            ### and IMO carries more risk since our string handling for the
+            ### unparsed bit could technically go wrong if we get really unlucky.
+            ### So, it's commented now!
+
+            ## The skippable section uses a totally isolated string registry
+            #self.set_skipped_string_registry()
+
+            ## World Data
+            #self.world_data = WorldData(self)
+
+            ## Then, we have, apparently, always 70 components, composed of
+            ## a string followed by an ECTa chunk.  I don't see anything
+            ## immediately which seems to provide that number, though I admit
+            ## I didn't look long.  We're just skipping these for now, since
+            ## shops_offset lets us skip right over, and I'd otherwise have to
+            ## start parsing 70 unique serialization formats.
+            ##self.components = []
+            ##for _ in range(70):
+            ##    component_str = self.df.read_string()
+            ##    component = Component(self.df)
+            ##    self.components.append((component_str, component))
+
+            ## Now just go ahead and skip the rest of the inbetween
+            ## data that our shops_offset lets us ignore
+            #self.skipped_data = UnparsedData(self, self.pbar_start_loc)
+
+            ## Flip back to the default string registry
+            #self.set_default_string_registry()
+
+            ### ------------------
+            ### SKIPPABLE ORIG END
+            ### ------------------
 
             # There seems to be a spare uint8 after the skipped data, which
             # seems to alway be zero.  Possibly I should just be reading one
-            # more byte than pbar_offset tells me to, but I'd rather just
+            # more byte than shops_offset tells me to, but I'd rather just
             # keep it consistent.
-            self.pre_pbar_zero = self.read_uint8()
+            self.pre_shops_zero = self.read_uint8()
 
             # Shop Status
             self.shops = Shops(self)
 
         else:
             self.world_data = None
-            #self.components = None
             self.skipped_data = None
 
             # We'll have a couple of null bytes here.
@@ -2584,7 +2644,7 @@ class Savefile(Datafile, Serializable):
         ### PBar offset handling...
         ###
 
-        # Offset to get to PBar chunks, plus some of that otherwise-skipped
+        # Offset to get to shop/PBar chunks, plus some of that otherwise-skipped
         # data.  Note that the skippable section handles its strings totally
         # separately from the rest of the file.  If a string was used earlier
         # on, its use in this skippable section will cause it to be written
@@ -2600,7 +2660,7 @@ class Savefile(Datafile, Serializable):
         #
         # TODO: Just write out the skippable section separately, compute the
         # length, and write them both directly, without having to assume that
-        # `pbar_offset` is 3 bytes.
+        # `shops_offset` is 3 bytes.
         #
         # (The main reason that's not already done is I hadn't realized at first
         # that the string handling is totally separate in here, so I thought there
@@ -2610,50 +2670,74 @@ class Savefile(Datafile, Serializable):
         # version first 'cause that was temporarily easiest.  Since the strings
         # *are* totally isolated, though, it's rather silly.)
 
-        if self.pbar_offset == 0:
+        if self.shops_offset == 0:
             # If it's zero, we can skip all this nonsense
-            odf.write_varint(self.pbar_offset)
+            odf.write_varint(self.shops_offset)
             odf.write_uint8(self.skipped_unknown_zero_1)
             odf.write_uint8(self.skipped_unknown_zero_2)
 
         else:
             # Write a "junk" three-byte value
-            pbar_offset_loc = odf.tell()
+            shops_offset_loc = odf.tell()
             odf.write(b'\x00\x00\x00')
             skipped_data_start_loc = odf.tell()
 
-            # Data that we can skip uses completely isolated string handling
-            odf.set_skipped_string_registry()
+            ### -------------------
+            ### SKIPPABLE NEW BEGIN
+            ### -------------------
+            ### See the comments up in the reading section re: this
 
-            # Write the remaining data
+            # World Data
             self.world_data.write_to(odf)
-            #for component_str, component in self.components:
-            #    odf.write_string(component_str)
-            #    component.write_to(odf)
-            self.skipped_data.write_to(odf)
 
-            # Flip back to the default string registry
-            odf.set_default_string_registry()
+            # Skipped Data
+            odf.write(self.skipped_data)
 
-            # Compute the proper pbar_offset
+            ### -----------------
+            ### SKIPPABLE NEW END
+            ### -----------------
+
+            ### --------------------
+            ### SKIPPABLE ORIG BEGIN
+            ### --------------------
+            ### See the comments up in the reading section re: this
+
+            ## Data that we can skip uses completely isolated string handling
+            #odf.set_skipped_string_registry()
+
+            ## Write the remaining data
+            #self.world_data.write_to(odf)
+            ##for component_str, component in self.components:
+            ##    odf.write_string(component_str)
+            ##    component.write_to(odf)
+            #self.skipped_data.write_to(odf)
+
+            ## Flip back to the default string registry
+            #odf.set_default_string_registry()
+
+            ### ------------------
+            ### SKIPPABLE ORIG END
+            ### ------------------
+
+            # Compute the proper shops_offset
             skipped_data_end_loc = odf.tell()
-            self.pbar_offset = skipped_data_end_loc - skipped_data_start_loc
+            self.shops_offset = skipped_data_end_loc - skipped_data_start_loc
 
             # This bit is absurd.  Anyway, write the varint and check its
             # length.  Then write the proper value out to its location and seek
             # back to where we're supposed to be.
             test_odf = Savefile('foo', do_write=True)
-            test_odf.write_varint(self.pbar_offset)
+            test_odf.write_varint(self.shops_offset)
             if test_odf.tell() != 3:
-                raise RuntimeError(f'Unsupported pbar_offset data length: {test_odf.tell()}')
+                raise RuntimeError(f'Unsupported shops_offset data length: {test_odf.tell()}')
             test_odf.seek(0)
-            odf.seek(pbar_offset_loc)
+            odf.seek(shops_offset_loc)
             odf.write(test_odf.read())
             odf.seek(skipped_data_end_loc)
 
             # Now post-skipped data which still relies on having
-            # a nonzero pbar_offset.
-            odf.write_uint8(self.pre_pbar_zero)
+            # a nonzero shops_offset.
+            odf.write_uint8(self.pre_shops_zero)
 
             # Shop Status
             self.shops.write_to(odf)
@@ -2709,9 +2793,9 @@ class Savefile(Datafile, Serializable):
             'missions',
             ], verbose)
         self._json_simple(my_dict, [
-            'pbar_offset',
+            'shops_offset',
             ])
-        if self.pbar_offset == 0:
+        if self.shops_offset == 0:
             self._json_simple(my_dict, [
                 'skipped_unknown_zero_1',
                 'skipped_unknown_zero_2',
@@ -2720,7 +2804,7 @@ class Savefile(Datafile, Serializable):
             my_dict['world_data'] = self.world_data.to_json(verbose)
             my_dict['skipped_data'] = '(omitted)'
             self._json_simple(my_dict, [
-                'pre_pbar_zero',
+                'pre_shops_zero',
                 ])
             self._json_object_arr(my_dict, [
                 'shops',

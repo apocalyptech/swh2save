@@ -33,6 +33,9 @@ class StringRegistry:
     the "skippable" section (starting with PWDT and proceeding until PBar) uses
     its own separate string registry, so I wanted to be able to flip between 'em
     easily.
+
+    Note that since implementing this, the app has stopped processing any strings
+    inside that "skippable" section, so this abstraction wasn't really needed.
     """
 
     def __init__(self):
@@ -69,15 +72,25 @@ class Datafile:
 
         # The "skippable" section in our data handles strings completely isolated
         # from the main file, so we're setting up two StringRegistry objects we
-        # can flip between.
+        # can flip between.  Note that we've since stopped handling strings inside
+        # that section at all, since we don't care about any data beyond the
+        # cloudcover, at the moment.
         self.sr_default = StringRegistry()
         self.sr_skipped = StringRegistry()
         self.set_default_string_registry()
 
     def set_default_string_registry(self):
+        """
+        Switch back to the "default" string registry
+        """
         self.sr = self.sr_default
 
     def set_skipped_string_registry(self):
+        """
+        Switch to the "skipped" area string registry.  Note that this is currently
+        not actually used, since we stopped processing enough of that area to
+        require string handling.
+        """
         self.sr = self.sr_skipped
 
     def seek(self, offset, whence=os.SEEK_SET):
