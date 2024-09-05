@@ -71,9 +71,6 @@ TODO
     likely enough that I actually ran into it on at least one of my saves.
     Will keep this commented until I get the rest of the file parsed so we
     can jettison the string searching altogether.
-- Possibly pare down our processing of the skipped bit -- just pull out our
-  map data and then treat the rest as a blob.  Probably no need to do string
-  processing on that at all.
 - Crew levelling could use a bit more thorough testing
 - Grab a few in-mission saves; I'm pretty sure we error out trying to read them.
   I have no real interest in trying to actually *parse* the in-mission bits,
