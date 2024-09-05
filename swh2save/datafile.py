@@ -20,29 +20,6 @@ import io
 import os
 import struct
 
-class StringRegistry:
-    """
-    The savefile format saves space by only storing strings once, and referring
-    back to previous locations if the string pops up again.  This class just holds
-    a few variables we use for keeping track of this (separate ones for reading
-    + writing).
-
-    Ideally we should probably pull all the string handling in here, but it's
-    historically been right in Datafile and I don't feel like refactoring it over
-    here.  I've wrapped these up in their own class because it turns out that
-    the "skippable" section (starting with PWDT and proceeding until PBar) uses
-    its own separate string registry, so I wanted to be able to flip between 'em
-    easily.
-
-    Note that since implementing this, the app has stopped processing any strings
-    inside that "skippable" section, so this abstraction wasn't really needed.
-    """
-
-    def __init__(self):
-        self.read_lookup = {}
-        self.read_strings_seen = set()
-        self.write_lookup = {}
-
 
 class Datafile:
 
@@ -70,28 +47,11 @@ class Datafile:
                 self.df = io.BytesIO(self.data)
             self.df.seek(0)
 
-        # The "skippable" section in our data handles strings completely isolated
-        # from the main file, so we're setting up two StringRegistry objects we
-        # can flip between.  Note that we've since stopped handling strings inside
-        # that section at all, since we don't care about any data beyond the
-        # cloudcover, at the moment.
-        self.sr_default = StringRegistry()
-        self.sr_skipped = StringRegistry()
-        self.set_default_string_registry()
-
-    def set_default_string_registry(self):
-        """
-        Switch back to the "default" string registry
-        """
-        self.sr = self.sr_default
-
-    def set_skipped_string_registry(self):
-        """
-        Switch to the "skipped" area string registry.  Note that this is currently
-        not actually used, since we stopped processing enough of that area to
-        require string handling.
-        """
-        self.sr = self.sr_skipped
+        # String registry handling -- a couple vars while reading, and one while
+        # writing.
+        self.string_read_lookup = {}
+        self.string_read_seen = set()
+        self.string_write_lookup = {}
 
     def seek(self, offset, whence=os.SEEK_SET):
         self.df.seek(offset, whence)
@@ -182,13 +142,13 @@ class Datafile:
             string_loc = self.tell()
             data = self.read(strlen)
             decoded = data.decode(self.encoding)
-            self.sr.read_lookup[string_loc] = decoded
-            self.sr.read_strings_seen.add(decoded)
+            self.string_read_lookup[string_loc] = decoded
+            self.string_read_seen.add(decoded)
             return decoded
         else:
             target_loc = second_val_loc-second_val
-            if target_loc in self.sr.read_lookup:
-                destination_string = self.sr.read_lookup[target_loc]
+            if target_loc in self.string_read_lookup:
+                destination_string = self.string_read_lookup[target_loc]
                 if len(destination_string) != strlen:
                     # I don't believe there will ever be a case where the string reference
                     # requests a "substring" of the original string, but we're checking for
@@ -227,12 +187,12 @@ class Datafile:
         else:
             data = value.encode(self.encoding)
             self.write_varint(len(data))
-            if data in self.sr.write_lookup:
-                self.write_varint(self.tell() - self.sr.write_lookup[data])
+            if data in self.string_write_lookup:
+                self.write_varint(self.tell() - self.string_write_lookup[data])
             else:
                 # Technically a varint but whatever
                 self.write_uint8(0)
-                self.sr.write_lookup[data] = self.tell()
+                self.string_write_lookup[data] = self.tell()
                 self.write(data)
 
 

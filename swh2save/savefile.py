@@ -2307,7 +2307,7 @@ class UnparsedData:
             if not UnparsedData.VALID_STRING_RE.match(string_val):
                 # Doesn't look like a string!
                 return False
-            if string_val in self.savefile.sr.read_strings_seen:
+            if string_val in self.savefile.string_read_seen:
                 # We've already seen this string; that would mean that both are
                 # probably false positives.  Not a big deal, but we'll avoid
                 # storing this duplicate as a string
@@ -2324,8 +2324,8 @@ class UnparsedData:
                 self.categorized.append(self.data[self.remaining_prev_pos:self.remaining_cur_pos])
 
             # Store the string
-            self.savefile.sr.read_lookup[my_pos] = string_val
-            self.savefile.sr.read_strings_seen.add(string_val)
+            self.savefile.string_read_lookup[my_pos] = string_val
+            self.savefile.string_read_seen.add(string_val)
             self.categorized.append(string_val)
 
             # Update current position
@@ -2335,8 +2335,8 @@ class UnparsedData:
         else:
             # Potential string reference; take a peek
             target_pos = second_val_pos-second_val
-            if target_pos in self.savefile.sr.read_lookup:
-                destination_string = self.savefile.sr.read_lookup[target_pos]
+            if target_pos in self.savefile.string_read_lookup:
+                destination_string = self.savefile.string_read_lookup[target_pos]
                 if len(destination_string) != strlen:
                     # String lengths don't match; this is a false positive!
                     return False
@@ -2517,9 +2517,13 @@ class Savefile(Datafile, Serializable):
             ### and IMO carries more risk since our string handling for the
             ### unparsed bit could technically go wrong if we get really unlucky.
             ### So, it's commented now!
-
-            ## The skippable section uses a totally isolated string registry
-            #self.set_skipped_string_registry()
+            ###
+            ### NOTE: Technically this section won't actually work anymore when
+            ### uncommented, because I ripped out the StringRegistry abstraction.
+            ### If I ever do resurrect this, my plan would be to create a separate
+            ### io.BytesIO object which contains just the skippable data, and then
+            ### use that as a `Savefile` object to read from.  That would isolate
+            ### the string handling properly and be a little less janky.
 
             ## World Data
             #self.world_data = WorldData(self)
@@ -2539,9 +2543,6 @@ class Savefile(Datafile, Serializable):
             ## Now just go ahead and skip the rest of the inbetween
             ## data that our shops_offset lets us ignore
             #self.skipped_data = UnparsedData(self, self.pbar_start_loc)
-
-            ## Flip back to the default string registry
-            #self.set_default_string_registry()
 
             ### ------------------
             ### SKIPPABLE ORIG END
@@ -2681,12 +2682,9 @@ class Savefile(Datafile, Serializable):
             ### --------------------
             ### SKIPPABLE ORIG BEGIN
             ### --------------------
-            ### See the comments up in the reading section re: this
-
-            ## Data that we can skip uses completely isolated string handling
-            ## (actually, since converting this to skippable_df, we probably
-            ## wouldn't actually need to do this, eh?)
-            #skippable_df.set_skipped_string_registry()
+            ### See the comments up in the reading section re: this.  With the
+            ### StringRegistry abstraction ripped out, this is actually hardly
+            ### any different.
 
             ## Write the remaining data
             #self.world_data.write_to(skippable_df)
@@ -2694,9 +2692,6 @@ class Savefile(Datafile, Serializable):
             ##    skippable_df.write_string(component_str)
             ##    component.write_to(skippable_df)
             #self.skipped_data.write_to(skippable_df)
-
-            ## Flip back to the default string registry
-            #skippable_df.set_default_string_registry()
 
             ### ------------------
             ### SKIPPABLE ORIG END
