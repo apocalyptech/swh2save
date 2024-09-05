@@ -67,9 +67,6 @@ TODO
 - Pull `string_finder.py` into the module
 - Add arg to write out savefiles with all strings expanded (would also still
   like to determine more definitively if such files will be read by the game).
-- Walk through a few savefiles with the help of `string_finder.py` and/or
-  string-expanded saves to see if there are string refs I missed, especially
-  early on before I really understood that format.
 - Possibly pare down our processing of the skipped bit -- just pull out our
   map data and then treat the rest as a blob.  Probably no need to do string
   processing on that at all.

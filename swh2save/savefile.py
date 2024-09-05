@@ -786,12 +786,15 @@ class Inventory(Chunk):
 class ReDe(Chunk):
     """
     `ReDe` chunk.
-    So I suspect this is intended to be a list of things that are "ready" ("ReDe")
-    to go, or "on deck" to be acquired, or something.  Its first use in the file
-    is a ReDe chunk which seems to contain a list of characters you haven't
-    recruited yet (so they'd be ready to recruit).  Then a bit later on, there's
-    a structure detailing some loot groups.  For instance, from some debug output
-    there:
+
+    I suspect this chunk is storing the state of a "deque", which the game
+    interally spells "Deck."  The chunk name might mean "Resource Deck/Deque"
+    or somesuch?  My original thought was that it was a list of things that
+    are "ready" ("ReDe") to go, or "on deck" to be acquired, or something.  Its
+    first use in the file is a ReDe chunk which seems to contain a list of
+    characters you haven't recruited yet (so they'd be ready to recruit).
+    Then a bit later on, there's a structure detailing some loot groups.  For
+    instance, from some debug output there:
 
          - Deck 3: deck_utility_and_rare
             - ReDe:
@@ -809,7 +812,8 @@ class ReDe(Chunk):
                5. combat_money
                6. combat_fragments
 
-    So yeah, not really sure.
+    So yeah, not totally sure, but the deck/deque relationship feels solid
+    to me.
     """
 
     def __init__(self, df):
@@ -855,7 +859,8 @@ class ReDe(Chunk):
 class LootTableDeck(Chunk):
     """
     `LTde` chunk.  A single "deck" inside a Loot Table entry.  See the LTma
-    docstring for some more info.
+    docstring for some more info.  I'm guessing that this is actually a
+    "deque" data structure.
     """
 
     def __init__(self, df):
@@ -868,7 +873,7 @@ class LootTableDeck(Chunk):
         # Name of the deck
         self.name = self.df.read_string()
 
-        # Items currently "ready" inside the deck
+        # Items currently ready inside the deck/deque
         self.rede = ReDe(self.df)
 
 
