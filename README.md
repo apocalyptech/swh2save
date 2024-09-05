@@ -65,8 +65,12 @@ TODO
 ====
 
 - Pull `string_finder.py` into the module
-- Add arg to write out savefiles with all strings expanded (would also still
-  like to determine more definitively if such files will be read by the game).
+- Add arg to write out savefiles with all strings expanded
+  - The code for this is technically in place but commented out.  It turns out
+    that the increased number of strings makes false positives on references
+    likely enough that I actually ran into it on at least one of my saves.
+    Will keep this commented until I get the rest of the file parsed so we
+    can jettison the string searching altogether.
 - Possibly pare down our processing of the skipped bit -- just pull out our
   map data and then treat the rest as a blob.  Probably no need to do string
   processing on that at all.
@@ -80,6 +84,10 @@ TODO
   rather than just blindly writing `debug_out.sav`
 - Put in a *sensible* way to create new Chunk objects; my current implementation
   makes that super awkward.
+- Finish parsing the remainder of the file.  I actually came across a scenario
+  where a detected string ref was a false positive while testing out the string
+  expansion (see above).  Still a pretty rare occurrence, but I don't think I'll
+  feel 100% about things until that's done.
 
 Format Info
 ===========

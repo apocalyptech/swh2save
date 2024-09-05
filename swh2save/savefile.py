@@ -21,7 +21,7 @@ import abc
 import enum
 import binascii
 
-from .datafile import Datafile
+from .datafile import Datafile, StringStorage
 from .gamedata import CREW, XP, JOBS
 
 
@@ -2224,6 +2224,10 @@ class UnparsedData:
         # as strings.
         self.categorized = []
 
+        # We may need to eventually make a guess as to the StringStorage
+        # being read.
+        self.string_storage_guess = StringStorage.UNKNOWN
+
         # Start looping
         self.remaining_cur_pos = self.start_pos
         self.remaining_prev_pos = self.start_pos
@@ -2307,11 +2311,20 @@ class UnparsedData:
             if not UnparsedData.VALID_STRING_RE.match(string_val):
                 # Doesn't look like a string!
                 return False
+
             if string_val in self.savefile.string_read_seen:
-                # We've already seen this string; that would mean that both are
-                # probably false positives.  Not a big deal, but we'll avoid
-                # storing this duplicate as a string
-                return False
+                # We've already seen this string; that could either mean that both
+                # are false positives, or that we're reading a file that's been
+                # saved with StringStorage.EXPANDED.  By the time we start processing
+                # unparsed data (as we're doing now), we *should* be able to guess
+                # which is which.  If it looks like we've had duplicates prior to
+                # this point, we'll proceed, but if we haven't had duplicates, we'll
+                # assume it's a false positive and return
+                if self.string_storage_guess == StringStorage.UNKNOWN:
+                    self.string_storage_guess = self.savefile.get_string_storage_guess()
+                if self.string_storage_guess == StringStorage.COMPRESSED:
+                    return False
+
             # Finally, we're as sure as we can be that this is a valid string.
             # Even if it's a false positive, we should be safe writing it out as
             # a string later, since that'll result in the same byte sequence,
@@ -2323,9 +2336,11 @@ class UnparsedData:
             if self.remaining_prev_pos < self.remaining_cur_pos:
                 self.categorized.append(self.data[self.remaining_prev_pos:self.remaining_cur_pos])
 
-            # Store the string
-            self.savefile.string_read_lookup[my_pos] = string_val
-            self.savefile.string_read_seen.add(string_val)
+            # Store the string (though if it's a duplicate, remember the *first*
+            # location, not this new one)
+            if string_val not in self.savefile.string_read_seen:
+                self.savefile.string_read_lookup[my_pos] = string_val
+                self.savefile.string_read_seen.add(string_val)
             self.categorized.append(string_val)
 
             # Update current position
@@ -2382,10 +2397,20 @@ class Savefile(Datafile, Serializable):
     def __init__(self, filename, do_write=False):
         super().__init__(filename, do_write=do_write)
         if not do_write:
-            self._read()
+            self.read_and_parse()
+
+            # Sanity check: make sure that, were we to write the file back right now, it
+            # remains identical to the input
+            test = self._prep_write_data(force_string_mode=self.string_storage)
+            test.seek(0)
+            test_data = test.read()
+            if self.data != test_data:
+                with open('debug_out.sav', 'wb') as odf:
+                    odf.write(test_data)
+                raise RuntimeError('Could not reconstruct an identical savefile, aborting!')
 
 
-    def _read(self):
+    def _read_and_parse(self):
 
         # TODO: I suspect many things which I'm assuming are uint8s are
         # actually varints!
@@ -2571,21 +2596,20 @@ class Savefile(Datafile, Serializable):
         # Any remaining data at the end that we're not sure of
         self.remaining = UnparsedData(self)
 
-        # Sanity check: make sure that, were we to write the file back right now, it
-        # remains identical to the input
-        test = self._prep_write_data()
-        test.seek(0)
-        test_data = test.read()
-        if self.data != test_data:
-            with open('debug_out.sav', 'wb') as odf:
-                odf.write(test_data)
-            raise RuntimeError('Could not reconstruct an identical savefile, aborting!')
 
-
-    def _prep_write_data(self, filename=None):
+    def _prep_write_data(self, filename=None, force_string_mode=StringStorage.UNKNOWN):
         if filename is None:
             filename = self.filename
         odf = Savefile(filename, do_write=True)
+
+        # Potentially force a string-writing mode
+        match force_string_mode:
+            case StringStorage.COMPRESSED | StringStorage.EXPANDED:
+                # Forcing a specific mode
+                odf.string_storage = force_string_mode
+            case _:
+                # Just use whatever our method is
+                odf.string_storage = self.string_storage
 
         # File magic
         odf.write(b'SWH2')
@@ -2729,8 +2753,8 @@ class Savefile(Datafile, Serializable):
         return odf
 
 
-    def save_to(self, filename):
-        odf = self._prep_write_data(filename)
+    def save_to(self, filename, force_string_mode=StringStorage.UNKNOWN):
+        odf = self._prep_write_data(filename, force_string_mode=force_string_mode)
         odf.save()
 
 

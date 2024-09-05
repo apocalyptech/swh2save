@@ -24,6 +24,7 @@ import textwrap
 import itertools
 
 from .gamedata import *
+from .datafile import StringStorage
 from .savefile import Savefile, InventoryItem
 
 def column_chunks(l, columns):
@@ -394,6 +395,73 @@ def main():
             help='Overwrite the output filename without prompting, if it already exists',
             )
 
+    if False:
+        # TODO:
+        # Okay, I'm not actually enabling these for now.  The options work quite
+        # well, and I'm keeping all the other support code in place, but
+        # the expanded string format seems to make false positives on string refs
+        # more likely.  For instance, on my `savegame_000.dat-32`, converting to
+        # expanded strings the once works fine, but then if you try to do anything
+        # with that expanded-string file, you get a false positive, which results
+        # in an invalid file (which gets caught due to our sanity check where we
+        # try to re-write an identical file, thankfully).  We *could* add some
+        # processing to say that if we see duplicate string definitions, reject
+        # all string *references*, but since string definition false positives are
+        # quite likely, I think we could run into problems.  (When running string
+        # detection on the "skippable" parts, for instance, it would often detect
+        # multiple single-character strings with the same letter, and we wouldn't
+        # want to blow up due to those.)
+        #
+        # The details, for `savegame_000.dat-32`:
+        #
+        #   At 0x52E90, we get: `1C A7 26`.  That could potentially mean a 28-char
+        #   string, 4903 bytes ago.  Backtracking that many bytes just puts us right
+        #   in the middle of some other string, though, and ther's nothing to match
+        #   on, so it's discarded.
+        #
+        #   Then, after writing the expanded version, `1C A7 26` ends up at position
+        #   0x54271.  Backtracking the 4903 bytes leads us to 0x52F4B, though and it
+        #   just so happens that we have the 28-char string `con_16_kraken_mother_story_b`
+        #   stored right there!  So when reading in this expanded file, it looks like
+        #   a valid string ref, so the UnparsedData code interprets it as such.
+        #
+        # The solution, really, is to just finish out parsing the file, that way we
+        # don't have to do string ref searching in the first place.  I think the
+        # string expansion makes these false positives more likely, though, since
+        # there's just that many more strings in the file to potentially match on.  It
+        # still feels kind of like a freak occurrence, but since I've run into it once,
+        # I'm not feeling confident enough to leave these options in.
+        #
+        # See below where we're setting these to False just so the code can still use
+        # 'em, btw!
+
+        string_args = format_section.add_mutually_exclusive_group()
+
+        string_args.add_argument('--strings-expanded',
+                action='store_true',
+                help="""
+                    By default, the savegame format reuses string data to save on space.  This argument
+                    will instead cause the savegame to write the full string every time.  This is useful
+                    for people investigating/parsing the savefile format, since it's more obvious where
+                    string data is in the file.  This won't really be of interest to regular users of
+                    this app.  If the savefile being read was saved with this option originally, the
+                    string expansion will be propagated to the new file (ie: in that case, this option
+                    is the default).  Specifying this option will cause the output file to be written
+                    out even if no other changes have been queued up.
+                    """,
+                )
+
+        string_args.add_argument('--strings-compressed',
+                action='store_true',
+                help="""
+                    By default, the savegame format reuses string data to save on space.  This is the
+                    default behavior, though if the savefile being read was saved with
+                    `--strings-expanded`, this option can be used to revert back to using compressed/reused
+                    strings.  Specfying this option will cause the output file to be written out even
+                    if now other changes have been queued up.
+                    """,
+                )
+
     basic_section = parser.add_argument_group(
             'Basic Options',
             'Basic Savegame data',
@@ -715,6 +783,11 @@ def main():
     ###
     ### Some basic argument cleanup
     ###
+
+    # Pretend we have our string-handling options still, even though they're
+    # currently commented (see the gigantic comment block above)
+    args.strings_expanded = False
+    args.strings_compressed = False
 
     # Require a filename *unless* we're showing IDs
     if not args.show_ids:
@@ -1728,9 +1801,19 @@ def main():
                 print('  map hiding is being performed.  Make sure the save has visited')
                 print('  the world map at least once.')
 
+        # Force a write if either of our strings options have been specified
+        if args.strings_expanded or args.strings_compressed:
+            do_save = True
+
         # Save out, assuming we did anything
         if do_save:
-            save.save_to(args.output)
+            if args.strings_expanded:
+                string_mode = StringStorage.EXPANDED
+            elif args.strings_compressed:
+                string_mode = StringStorage.COMPRESSED
+            else:
+                string_mode = StringStorage.UNKNOWN
+            save.save_to(args.output, force_string_mode=string_mode)
             print('')
             print(f'Wrote to: {args.output}')
             print('')
