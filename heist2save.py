@@ -16,11 +16,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
+import sys
 import swh2save.cli
 
 # Just a temp convenience script.  Probably best to set up a venv and
 # install with `pip install --editable .` rather than use this!
 
 if __name__ == '__main__':
-    swh2save.cli.main()
+    sys.exit(swh2save.cli.main())
 

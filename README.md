@@ -72,10 +72,6 @@ TODO
     Will keep this commented until I get the rest of the file parsed so we
     can jettison the string searching altogether.
 - Crew levelling could use a bit more thorough testing
-- Grab a few in-mission saves; I'm pretty sure we error out trying to read them.
-  I have no real interest in trying to actually *parse* the in-mission bits,
-  but perhaps we could at least detect them more gracefully and fail out with
-  a useful message to the user.
 - README docs!
 - Put in a *sensible* way to create new Chunk objects; my current implementation
   makes that super awkward.

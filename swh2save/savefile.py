@@ -26,6 +26,15 @@ from .datafile import Datafile, StringStorage
 from .gamedata import CREW, XP, JOBS
 
 
+class InMissionSavegameException(Exception):
+    """
+    An exception to throw when we detect that the savefile might have been
+    saved while inside a mission, so we can fail more gracefully when
+    that happens.  (Since I really don't want to try and parse in-mission
+    data.)
+    """
+
+
 class Serializable:
     """
     An object that we want to be able to JSONify.  Note that despite
@@ -1520,10 +1529,18 @@ class MissionData(Chunk):
 
         self.unknown_1 = self.df.read_uint8()
         self.unknown_2 = self.df.read_uint8()
-        # The data here seems like it would always fit in a u16; perhaps we're being
-        # too greedy with the 32...
-        self.unknown_3 = self.df.read_uint32()
+        self.unknown_3 = self.df.read_uint8()
         self.unknown_4 = self.df.read_uint8()
+
+        # A couple of values which seem to be zero when outside of a mission
+        # but are >0 when inside one.  I really don't feel like parsing the
+        # mission data, so we're trying to fail gracefully here
+        self.unknown_mission_related_1 = self.df.read_uint8()
+        self.unknown_mission_related_2 = self.df.read_uint8()
+        if self.unknown_mission_related_1 > 0 or self.unknown_mission_related_2:
+            raise InMissionSavegameException()
+
+        self.unknown_5 = self.df.read_uint8()
 
         # Just kind of guessing that it's "active."  It's a list of crew, at least.
         self.active_crew = []
@@ -1532,8 +1549,8 @@ class MissionData(Chunk):
             self.active_crew.append(self.df.read_string())
 
         # These always seem to be zero
-        self.unknown_5 = self.df.read_uint8()
         self.unknown_6 = self.df.read_uint8()
+        self.unknown_7 = self.df.read_uint8()
 
         # Sixteen bytes of unknown data, but for all my collected saves, it's
         # literally the same value in each one: a sequence of eight bytes which
@@ -1560,7 +1577,7 @@ class MissionData(Chunk):
 
         # And then a varint of some sort -- my one save where this is anything
         # but zero is right after the sub kraken fight, at the end.
-        self.unknown_7 = self.df.read_varint()
+        self.unknown_8 = self.df.read_varint()
 
         # Difficulty.  Different from the "main" difficulty, I guess?
         self.difficulty = Difficulty(self.df)
@@ -1602,15 +1619,18 @@ class MissionData(Chunk):
 
         odf.write_uint8(self.unknown_1)
         odf.write_uint8(self.unknown_2)
-        odf.write_uint32(self.unknown_3)
+        odf.write_uint8(self.unknown_3)
         odf.write_uint8(self.unknown_4)
+        odf.write_uint8(self.unknown_mission_related_1)
+        odf.write_uint8(self.unknown_mission_related_2)
+        odf.write_uint8(self.unknown_5)
 
         odf.write_varint(len(self.active_crew))
         for crew in self.active_crew:
             odf.write_string(crew)
 
-        odf.write_uint8(self.unknown_5)
         odf.write_uint8(self.unknown_6)
+        odf.write_uint8(self.unknown_7)
 
         odf.write_uint32(self.unknown_same_1)
         odf.write_uint32(self.unknown_same_2)
@@ -1621,7 +1641,7 @@ class MissionData(Chunk):
         odf.write_uint8(self.unknown_zeroes_3)
         odf.write_uint8(self.unknown_zeroes_4)
         odf.write_uint8(self.unknown_zeroes_5)
-        odf.write_varint(self.unknown_7)
+        odf.write_varint(self.unknown_8)
 
         self.difficulty.write_to(odf)
 
@@ -1650,9 +1670,12 @@ class MissionData(Chunk):
             'unknown_2',
             'unknown_3',
             'unknown_4',
-            'active_crew',
+            'unknown_mission_related_1',
+            'unknown_mission_related_2',
             'unknown_5',
+            'active_crew',
             'unknown_6',
+            'unknown_7',
             'unknown_same_1',
             'unknown_same_2',
             'unknown_same_3',
@@ -1662,7 +1685,7 @@ class MissionData(Chunk):
             'unknown_zeroes_3',
             'unknown_zeroes_4',
             'unknown_zeroes_5',
-            'unknown_7',
+            'unknown_8',
             ])
         my_dict['difficulty'] = self.difficulty.to_json(verbose)
         self._json_simple(my_dict, [

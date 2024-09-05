@@ -25,7 +25,7 @@ import itertools
 
 from .gamedata import *
 from .datafile import StringStorage
-from .savefile import Savefile, InventoryItem
+from .savefile import Savefile, InventoryItem, InMissionSavegameException
 
 def column_chunks(l, columns):
     """
@@ -1005,7 +1005,7 @@ def main():
         did_this_dump = id_lookup.show(force=args.show_ids)
         did_info_dump = did_info_dump or did_this_dump
     if did_info_dump:
-        return
+        return 1
 
     ###
     ### Okay, we've got valid args.add_key_item and args.add_upgrade sets.
@@ -1067,10 +1067,17 @@ def main():
     ###
 
     # Load in the savefile
-    save = Savefile(args.filename,
-            error_save_to=args.error_save_to,
-            force_overwrite=args.force,
-            )
+    try:
+        save = Savefile(args.filename,
+                error_save_to=args.error_save_to,
+                force_overwrite=args.force,
+                )
+    except InMissionSavegameException:
+        print('')
+        print('ERROR: It looks like this savefile was probably saved while inside a')
+        print('mission.  Currently this utility does not support saves in that state.')
+        print('')
+        return 2
 
     # Now decide what to do.  First up: listing contents!
     if args.list:
@@ -1213,7 +1220,7 @@ def main():
             if response == '' or response[0] != 'y':
                 print('Exiting!')
                 print('')
-                return
+                return 3
             print('')
 
         with open(args.json, 'w') as odf:
@@ -1250,7 +1257,7 @@ def main():
             if response == '' or response[0] != 'y':
                 print('Exiting!')
                 print('')
-                return
+                return 4
             print('')
 
         do_save = False
@@ -1840,7 +1847,10 @@ def main():
             print('NOTICE: No changes made, not writing any data!')
             print('')
 
+    # Return!
+    return 0
+
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
 
