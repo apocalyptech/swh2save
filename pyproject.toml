@@ -7,7 +7,7 @@ authors = [
 ]
 license.file = "LICENSE.txt"
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
     "Intended Audience :: Developers",
@@ -15,9 +15,12 @@ classifiers = [
     "Natural Language :: English",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
-# Honestly not sure what the minimum is, at the moment
-#requires-python = ">= 3.10"
+requires-python = ">= 3.10"
 dependencies = []
 dynamic = ["version"]
 keywords = ["steamworld", "heist", "heist 2", "swh2", "steamworld heist 2", "save editor"]

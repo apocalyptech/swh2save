@@ -17,12 +17,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 import os
+import sys
 import math
 import json
 import argparse
 import textwrap
 import itertools
 
+from . import __version__
 from .gamedata import *
 from .datafile import StringStorage
 from .savefile import Savefile, InventoryItem, InMissionSavegameException
@@ -317,7 +319,7 @@ class GameDataLookup:
 def main():
 
     parser = argparse.ArgumentParser(
-            description='SteamWorld Heist II CLI Save Editor',
+            description=f'SteamWorld Heist II CLI Save Editor v{__version__}',
             )
 
     mode_section = parser.add_argument_group(
@@ -373,7 +375,7 @@ def main():
             help='Show extra information when listing savegame contents, performing edits, and outputting JSON',
             )
 
-    format_section.add_argument('-1', '--single_column',
+    format_section.add_argument('-1', '--single-column',
             dest='single_column',
             action='store_true',
             help='Force the verbose view to have one item per line instead of trying to use columns',
