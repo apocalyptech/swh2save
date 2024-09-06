@@ -55,7 +55,7 @@ included what I think the chunks are supposed to imply datawise:
   - *(for in-Mission saves, has some leaves I have not decoded)*
   - `Difc`
 - *(these next few may be skipped over on **very** early-game saves)*
-  - `PWDT` (Worl Data of some sort)
+  - `PWDT` (World Data of some sort)
     - Array of `MtBG` (revealed map data; no clue what "MtBG" itself is supposed to mean, though)
     - `Beha` (World Map Behavior States) *(not actually processed by this util)*
     - `ECSD` (World Map Entity Definitions) *(not actually processed by this util)*
