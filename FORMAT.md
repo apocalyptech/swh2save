@@ -32,36 +32,39 @@ happening (for instance, I'm not really sure how much info is technically inside
 the `Head` header chunk, and how much is just "in" the main savefile).
 
 The "tree" in which I've chosen to represent the chunks looks like this, though
-of course this may differ from how Thunderful do things on their end:
+of course this may differ from how Thunderful do things on their end.  I've
+included what I think the chunks are supposed to imply datawise:
 
-- `Head`
-  - `Difc`
+- `Head` (Header)
+  - `Difc` (Difficulty Settings)
   - `Difc` *(not sure why there are two of these chunks in here)*
-- `Imh2`
-- `GaRe`
-- `Ship`
-- `Inve`
-  - Array of `ItIn`
-  - Array of `CrLo`
-- *(optional)* `ReDe`
-- `LTma`
-  - Series of `LTde` arrays
-    - `ReDe`
-- `LoDe`
-  - Dict of `LoDD`
-- `ShlD`
-- `MsnD`
+- `Imh2` (not sure really)
+- `GaRe` (Game Resources?)
+- `Ship` (Ship/Sub Status)
+- `Inve` (Inventory)
+  - Array of `ItIn` (Inventory Item)
+  - Array of `CrLo` (Character Loadout)
+- *(optional)* `ReDe` (Resource Deck/Deque?)
+- `LTma` (Loot Manager?)
+  - Series of `LTde` arrays (Loot Deck/Deque)
+    - `ReDe` (Resource Deck/Deque?)
+- `LoDe` (Loot Deck/Deque)
+  - Dict of `LoDD` (Loot Deck... Data?)
+- `ShlD` (Ship/Sub Location)
+- `MsnD` (Mission Data)
   - *(for in-Mission saves, has some leaves I have not decoded)*
   - `Difc`
 - *(these next few may be skipped over on **very** early-game saves)*
-  - `PWDT`
-    - Array of `MtBG`
-    - `Beha *(not actually processed by this util)*
-    - `ECSD *(not actually processed by this util)*
-  - Dict of `ECTa *(not actually processed by this util)*
-  - Dict of `PBar`
-- `PeCo`
-  - Dict of `Pers`
+  - `PWDT` (Worl Data of some sort)
+    - Array of `MtBG` (revealed map data; no clue what "MtBG" itself is supposed to mean, though)
+    - `Beha` (World Map Behavior States) *(not actually processed by this util)*
+    - `ECSD` (World Map Entity Definitions) *(not actually processed by this util)*
+  - Dict of `ECTa` (actually a collection of 70 different data types; I think
+    the storage format might not be the same for all of them) *(not actually
+    processed by this util)*
+- Dict of `PBar` (Bar/Shop Market Status)
+- `PeCo` (Persona/Crew Controller)
+  - Dict of `Pers` (Persona/Crew status)
 - *(This is where I've stopped; there's at least some quest-related
   chunks afterwards)*
 
