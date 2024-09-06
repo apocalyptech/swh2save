@@ -417,7 +417,7 @@ You can add specific Key Items with the `--add-key-item` argument.  This can be
 specified more than once, and/or you can use multiple Key Items separated by
 a comma.  For instance, these two statements are functionally identical:
 
-    heist2save savegame_000.dat -o new.dat --add-key-item keyitem_glow_rod_01 --add-upgrade hub_c_flagship_codes
+    heist2save savegame_000.dat -o new.dat --add-key-item keyitem_glow_rod_01 --add-key-item hub_c_flagship_codes
     heist2save savegame_000.dat -o new.dat --add-key-item keyitem_glow_rod_01,hub_c_flagship_codes
 
 To get a list of all valid Key Item IDs, use `list` or `help` for the name:
@@ -475,11 +475,128 @@ specifying all seven upgrades/item IDs.
 
 ## Inventory
 
-*(forthcoming)*
+Where possible, when adding new items of any sort to the game, the utility will
+mark the added items as "New" ingame.  To prevent that from happening (so you
+don't have to mouseover the items in inventory to get rid of the flashing
+notifier), use the `--no-new-items` argument.  (This is also true for Key Items
+listed above, actually.)
+
+    heist2save savegame_000.dat -o new.dat --unlock-key-items --no-new-items
+
+### Add Specific Hats
+
+Specific hats can be added using the `--add-hat` argument.  This can be
+specified more than once, and/or you can specify multiple hats separated by
+a comma.  For instance, these two statements are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --add-hat hat_navy_seabot_sniper --add-hat hat_shop_fish
+    heist2save savegame_000.dat -o new.dat --add-hat hat_navy_seabot_sniper,hat_shop_fish
+
+To get a list of all valid hat IDs, use `list` or `help` for the name:
+
+    heist2save savegame_000.dat -o new.dat --add-hat help
+
+Note that this does *not* remove the associated hats from the various Hat
+Shops you can find on the map.
+
+### Unlocking All Hats
+
+You can unlock all hats using the `--unlock-hats` argument:
+
+    heist2save savegame_000.dat -o new.dat --unlock-hat help
+
+### Set Capt. Leeway's Hat
+
+Yes, you can set the hat that Capt. Leeway wears, with the `--set-leeway-hat`
+argument!  It's likely that this choice will be overwritten by the game when
+certain story moments are triggered, but you should be able to just set the
+hat back afterwards:
+
+    heist2save savegame_000.dat -o new.dat --set-leeway-hat hat_atomic_reviver_king
+
+This does *not* unlock the specified hat for crew use; use the `--add-hat` or
+`--unlock-hats` args for that.
+
+### Add Specific Ship Equipment
+
+Specific ship equipment (wepons, armor, speed boosts, etc) can be added using the
+`--add-ship-equipment` argument.  This can be specified more than once, and/or you
+can specify multiple items separated by a comma.  For instance, these two statements
+are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --add-ship-equipment ship_equipment_cannon_01 \
+        --add-ship-equipment ship_equipment_torpedo_01
+    heist2save savegame_000.dat -o new.dat --add-ship-equipment \
+        ship_equipment_cannon_01,ship_equipment_torpedo_01
+
+To get a list of all valid item IDs, use `list` or `help` for the name:
+
+    heist2save savegame_000.dat -o new.dat --add-ship-equipment help
+
+### Add Specific Utility Items
+
+Specific utility items (armor, boots, XP boosts, etc) can be added using the
+`--add-utility` argument.  This can be specified more than once, and/or you
+can specify multiple items separated by a comma.  For instance, these two statements
+are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --add-utility utility_boots_01 --add-utility utility_jetpack
+    heist2save savegame_000.dat -o new.dat --add-utility utility_boots_01,utility_jetpack
+
+To get a list of all valid item IDs, use `list` or `help` for the name:
+
+    heist2save savegame_000.dat -o new.dat --add-utility help
+
+### Add Specific Weapons
+
+Specific weapons can be added using the `--add-weapon` argument.  This can be
+specified more than once, and/or you can specify multiple weapons separated
+by a comma.  For instance, these two statements are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --add-weapon hammer_04 --add-weapon shotgun_03_rare
+    heist2save savegame_000.dat -o new.dat --add-weapon hammer_04,shotgun_03_rare
+
+To get a list of all valid item IDs, use `list` or `help` for the name:
+
+    heist2save savegame_000.dat -o new.dat --add-weapon help
+
+### Endgame Item Packs
+
+There are a few cheaty arguments to add sets of items to your inventory all
+at once, in case you just feel like cheating from the early game with a
+full set of endgame gear.
+
+To add a collection of endgame ship equipment, use the `--endgame-ship-pack`
+argument:
+
+    heist2save savegame_000.dat -o new.dat --endgame-ship-pack
+
+To add a collection of endgame weapons, use the `--endgame-weapon-pack`
+argument:
+
+    heist2save savegame_000.dat -o new.dat --endgame-weapon-pack
+
+To add a collection of endgame utility items, use the `--endgame-utility-pack`
+argument:
+
+    heist2save savegame_000.dat -o new.dat --endgame-utility-pack
+
+And finally, to add all three of those packs at once, use the `--endgame-pack`
+option.  These two statements are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --endgame-pack
+    heist2save savegame_000.dat -o new.dat --endgame-ship-pack \
+        --endgame-utility-pack --endgame-weapon-pack
 
 ## World Map
 
-*(forthcoming)*
+### Reveal/Hide Map
+
+You can reveal or hide the entire world map using the `--reveal-map` or
+`--hide-map` arguments:
+
+    heist2save savegame_000.dat -o new.dat --reveal-map
+    heist2save savegame_000.dat -o new.dat --hide-map
 
 TODO
 ====
@@ -492,7 +609,6 @@ TODO
     Will keep this commented until I get the rest of the file parsed so we
     can jettison the string searching altogether.
 - Crew levelling could use a bit more thorough testing
-- README docs!
 - Put in a *sensible* way to create new Chunk objects; my current implementation
   makes that super awkward.
 - Finish parsing the remainder of the file.  I actually came across a scenario
