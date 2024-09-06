@@ -221,6 +221,10 @@ arguments, respectively:
     heist2save savegame_000.dat -o new.dat --fragments 100
     heist2save savegame_000.dat -o new.dat --water 2000
 
+I have not yet figured out how the savegame stores your current Bounty points,
+actually!  I suspect it might be in the mission/quest status somewhere?  That or
+I've just missed it entirely.
+
 ## Crew Editing
 
 ### Unlock Crew
@@ -328,7 +332,146 @@ use in the current day, rather than having to go back to a bar to rest:
 
 ## Upgrades
 
-*(forthcoming)*
+Note that Upgrades are often closely related to Key Items.  For all of the options
+in this section, if there is an association between the two, the utility will
+automatically do what's necessary to ensure that the two are synced up.  So if
+you add an upgrade which requires a key item, that key item will also be added.
+Likewise, if you for instance *remove* a key item, it might also remove one or
+more upgrades that are associated with it.  In generaly you shouldn't have to
+worry about those details, though!
+
+### Adding Specific Upgrades
+
+You can add specific upgrades with the `--add-upgrade` argument.  This can be
+specified more than once, and/or you can use multiple upgrades separated by
+a comma.  For instance, these two statements are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --add-upgrade crew_health_00 --add-upgrade exp_bonus_00
+    heist2save savegame_000.dat -o new.dat --add-upgrade crew_health_00,exp_bonus_00
+
+To get a list of all valid upgrade IDs, use `list` or `help` for the name:
+
+    heist2save savegame_000.dat -o new.dat --add-upgrade help
+
+Adding an upgrade may also add the required key item, if there is a relationship
+between the two.
+
+### Removing Specific Upgrades
+
+You can remove specific upgrades wiht the `--remove-upgrade` argument.  This can be
+specified more than once, and/or you can use multiple upgrades separated by
+a comma.  For instance, these two statements are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --remove-upgrade crew_health_00 --remove-upgrade exp_bonus_00
+    heist2save savegame_000.dat -o new.dat --remove-upgrade crew_health_00,exp_bonus_00
+
+To get a list of all valid upgrade IDs, use `list` or `help` for the name:
+
+    heist2save savegame_000.dat -o new.dat --remove-upgrade help
+
+Removing an upgrade may also remove the associated key item, if there is a relationship
+between the two.  Note that this could end up also removing more than just the one
+upgrade you intended: the `atomic_engine` Key Item supplies the upgrades `dive_02`
+and `geiger_counter_01`.  If you remove either `dive_02` or `geiger_counter_01`, the
+`atomic_engine` Key Item will be removed, which will also remove the other upgrade.
+
+### Unlocking Upgrade Groups
+
+All "main" upgrades (from the main Sub Upgrades panel on the sub) can be unlocked
+with the `--unlock-main-upgrades` argument.  Note that some of these won't show up
+in the sub console until the relevant story triggers have been activated, but their
+effects should be active regardless:
+
+    heist2save savegame_000.dat -o new.dat --unlock-main-upgrades
+
+All upgrades acquired via item acquisition through the storyline (such as boosting/diving,
+celestial gears, etc) can be unlocked with the `--unlock-item-upgrades` argument.
+This will also add in a number of key items:
+
+    heist2save savegame_000.dat -o new.dat --unlock-item-upgrades
+
+All upgrades acquired via the Job Upgrade station on the sub can be unlocked with
+the `--unlock-job-upgrades` argument:
+
+    heist2save savegame_000.dat -o new.dat --unlock-job-upgrades
+
+All Personal Upgrades can be unlocked with the `--unlock-personal-upgrades` argument.
+Note that this will *only* unlock personal upgrades for crew which are already unlocked.
+(Though if you use `--unlock-crew` at the same time, the crew will be unlocked first,
+so this argument will work for any freshly-unlocked crew.)
+
+    heist2save savegame_000.dat -o new.dat --unlock-personal-upgrades
+
+*All* upgrades, regardless of category, can be unlocked using the `--unlock-upgrades`
+argument.  This is equivalent to specifying the four individual unlock commands at
+once.  For instance, these two commands are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --unlock-upgrades
+    heist2save savegame_000.dat -o new.dat --unlock-main-upgrades \
+        --unlock-item-upgrades --unlock-job-upgrades \
+        --unlock-personal-upgrades
+
+### Adding Specific Key Items
+
+You can add specific Key Items with the `--add-key-item` argument.  This can be
+specified more than once, and/or you can use multiple Key Items separated by
+a comma.  For instance, these two statements are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --add-key-item keyitem_glow_rod_01 --add-upgrade hub_c_flagship_codes
+    heist2save savegame_000.dat -o new.dat --add-key-item keyitem_glow_rod_01,hub_c_flagship_codes
+
+To get a list of all valid Key Item IDs, use `list` or `help` for the name:
+
+    heist2save savegame_000.dat -o new.dat --add-key-item help
+
+Adding a Key Item may also add the associated upgrade(s), if there is a relationship
+between the two.
+
+### Removing Specific Key Items
+
+You can remove specific Key Items with the `--remove-key-item` argument.  This can be
+specified more than once, and/or you can use multiple Key Items separated by
+a comma.  For instance, these two statements are functionally identical:
+
+    heist2save savegame_000.dat -o new.dat --remove-key-item keyitem_glow_rod_01 --add-upgrade hub_c_flagship_codes
+    heist2save savegame_000.dat -o new.dat --remove-key-item keyitem_glow_rod_01,hub_c_flagship_codes
+
+To get a list of all valid Key Item IDs, use `list` or `help` for the name:
+
+    heist2save savegame_000.dat -o new.dat --remove-key-item help
+
+Removing a Key Item may also remove the associated upgrade(s), if there is a relationship
+between the two.
+
+### Unlocking All Key Items
+
+You can also unlock *all* Key Items using the `--unlock-key-items` argument.  This
+will also unlock a number of upgrades:
+
+    heist2save savegame_000.dat -o new.dat --unlock-key-items
+
+### Unlocking Sub Abilities
+
+A shortcut argument to unlock all sub abilities (boosting, diving, ram, shield,
+sonar, and atomic engine) is `--unlock-sub-abilities`.  This also ends up unlocking
+a geiger counter level as a side effect.  These two commands are equivalent:
+
+    heist2save savegame_000.dat -o new.dat --unlock-sub-abilities
+    heist2save savegame_000.dat -o new.dat \
+        --add-upgrade ship_boost_00,dive_00,dive_02,geiger_counter_01,sonar \
+        --add-key-item keyitem_ship_ram,keyitem_ship_shield
+
+### Unlocking Celestial Gears
+
+There are seven gears in the game which can be unlocked after reaching maximum
+reputation in their map areas, from the bar in the area.  These provide various
+buffs to your whole crew.  These can all be unlocked with the `--unlock-gears`
+argument.  It will unlock both the Key Items and their related upgrades.
+
+    heist2save savegame_000.dat -o new.dat --unlock-gears
+
+This is equivalent to using `--add-upgrade` or `--add-key-item` arguments and
+specifying all seven upgrades/item IDs.
 
 ## Inventory
 
