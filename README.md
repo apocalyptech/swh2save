@@ -5,28 +5,48 @@ This is a Python-based CLI save editor for the excellent
 [SteamWorld Heist II](https://store.steampowered.com/app/2396240) from
 Thunderful Development.
 
-At time of writing, here's the stuff you can edit:
-- Resources:
-  - Water (money)
-  - Fragments
-  - *(No bounty points yet!)*
-- Crew
-  - Unlocking crew
-  - Setting Job XP
-  - Spending Reserve XP
-  - Refresh crew + equipment (use again on the same day)
-- Upgrades:
-  - Sub Upgrade panel
-  - Job Upgrade panel
-  - Various other item-based upgrades (sub dive/ram, etc)
-  - Personal Upgrades
-- Inventory
-  - Weapons
-  - Equippable Gear
-  - Sub Equipment
-  - Key Items
-  - Hats!
-- Revealing the full map
+- [WARNING](#warning)
+- [Running / Installation](#running--installation)
+  - [Easiest Method: pip](#easiest-method-pip)
+  - [Git Checkout (the proper way)](#git-checkout-the-proper-way)
+  - [Git Checkout (the lazy way)](#git-checkout-the-lazy-way)
+- [Usage](#usage)
+  - [Operational Modes](#operational-modes)
+    - [Save Editing](#save-editing)
+    - [Show IDs](#show-ids)
+    - [Showing Savegame Info](#showing-savegame-info)
+    - [Output as JSON](#output-as-json)
+    - [Check Savegame (Test our Parsing)](#check-savegame-test-our-parsing)
+  - [Basic Options](#basic-options)
+    - [Setting the current day](#setting-the-current-day)
+    - [Fragments and Water (Money)](#fragments-and-water-money)
+  - [Crew Editing](#crew-editing)
+    - [Unlock Crew](#unlock-crew)
+    - [Set Crew Job Levels](#set-crew-job-levels)
+    - [Spending Reserve XP](#spending-reserve-xp)
+    - [Refresh Crew](#refresh-crew)
+  - [Upgrades](#upgrades)
+    - [Adding Specific Upgrades](#adding-specific-upgrades)
+    - [Removing Specific Upgrades](#removing-specific-upgrades)
+    - [Unlocking Upgrade Groups](#unlocking-upgrade-groups)
+    - [Adding Specific Key Items](#adding-specific-key-items)
+    - [Removing Specific Key Items](#removing-specific-key-items)
+    - [Unlocking All Key Items](#unlocking-all-key-items)
+    - [Unlocking Sub Abilities](#unlocking-sub-abilities)
+    - [Unlocking Celestial Gears](#unlocking-celestial-gears)
+  - [Inventory](#inventory)
+    - [Add Specific Hats](#add-specific-hats)
+    - [Unlocking All Hats](#unlocking-all-hats)
+    - [Set Capt. Leeway's Hat](#set-capt-leeways-hat)
+    - [Add Specific Ship Equipment](#add-specific-ship-equipment)
+    - [Add Specific Utility Items](#add-specific-utility-items)
+    - [Add Specific Weapons](#add-specific-weapons)
+    - [Endgame Item Packs](#endgame-item-packs)
+  - [World Map](#world-map)
+    - [Reveal/Hide Map](#revealhide-map)
+- [TODO](#todo)
+- [Format Info](#format-info)
+- [License](#license)
 
 WARNING
 =======
