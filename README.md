@@ -523,7 +523,7 @@ Shops you can find on the map.
 
 You can unlock all hats using the `--unlock-hats` argument:
 
-    heist2save savegame_000.dat -o new.dat --unlock-hat help
+    heist2save savegame_000.dat -o new.dat --unlock-hats
 
 ### Set Capt. Leeway's Hat
 
@@ -635,6 +635,7 @@ TODO
   where a detected string ref was a false positive while testing out the string
   expansion (see above).  Still a pretty rare occurrence, but I don't think I'll
   feel 100% about things until that's done.
+- Would be nice to figure out where Bounty points are stored
 
 Format Info
 ===========
