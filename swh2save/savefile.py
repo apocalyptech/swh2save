@@ -1028,6 +1028,7 @@ class LootDeckStatus(Chunk):
         # identifiers, actually)
         self.zero = self.df.read_uint8()
 
+        # TODO: should probably store these as a dict
         self.decks = []
         num_decks = self.df.read_varint()
         for _ in range(num_decks):
@@ -2608,22 +2609,17 @@ class Savefile(Datafile, Serializable):
             ### SKIPPABLE ORIG END
             ### ------------------
 
-            # There seems to be a spare uint8 after the skipped data, which
-            # seems to alway be zero.  Possibly I should just be reading one
-            # more byte than shops_offset tells me to, but I'd rather just
-            # keep it consistent.
-            self.pre_shops_zero = self.read_uint8()
-
-            # Shop Status
-            self.shops = Shops(self)
-
         else:
+
             self.world_data = None
             self.skipped_data = None
 
-            # We'll have a couple of null bytes here.
-            self.skipped_unknown_zero_1 = self.read_uint8()
-            self.skipped_unknown_zero_2 = self.read_uint8()
+        # There seems to be a spare uint8 which is always `0x00` before the
+        # Shops data.
+        self.pre_shops_zero = self.read_uint8()
+
+        # Shop Status
+        self.shops = Shops(self)
 
         # Crew status!
         self.crew = CrewController(self)
@@ -2713,12 +2709,12 @@ class Savefile(Datafile, Serializable):
         # that point can't point inside the skippable area.
 
         if self.shops_offset == 0:
-            # If it's zero, we can skip all this nonsense
+
+            # If it's zero, just write the offset
             odf.write_varint(self.shops_offset)
-            odf.write_uint8(self.skipped_unknown_zero_1)
-            odf.write_uint8(self.skipped_unknown_zero_2)
 
         else:
+
             # Set up a new file to write to
             skipped_data_start_loc = odf.tell()
             skippable_df = Savefile('virtual', do_write=True)
@@ -2762,16 +2758,16 @@ class Savefile(Datafile, Serializable):
             skippable_df.seek(0)
             odf.write(skippable_df.read())
 
-            # Now post-skipped data which still relies on having
-            # a nonzero shops_offset.
-            odf.write_uint8(self.pre_shops_zero)
-
-            # Shop Status
-            self.shops.write_to(odf)
-
         ###
         ### Resuming our ordinary processing...
         ###
+
+        # Now post-skipped data which still relies on having
+        # a nonzero shops_offset.
+        odf.write_uint8(self.pre_shops_zero)
+
+        # Shop Status
+        self.shops.write_to(odf)
 
         # Crew status
         self.crew.write_to(odf)
@@ -2822,20 +2818,15 @@ class Savefile(Datafile, Serializable):
         self._json_simple(my_dict, [
             'shops_offset',
             ])
-        if self.shops_offset == 0:
-            self._json_simple(my_dict, [
-                'skipped_unknown_zero_1',
-                'skipped_unknown_zero_2',
-                ])
-        else:
+        if self.shops_offset > 0:
             my_dict['world_data'] = self.world_data.to_json(verbose)
             my_dict['skipped_data'] = '(omitted)'
-            self._json_simple(my_dict, [
-                'pre_shops_zero',
-                ])
-            self._json_object_arr(my_dict, [
-                'shops',
-                ], verbose)
+        self._json_simple(my_dict, [
+            'pre_shops_zero',
+            ])
+        self._json_object_arr(my_dict, [
+            'shops',
+            ], verbose)
         self._json_object_single(my_dict, [
             'crew',
             ])
