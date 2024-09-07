@@ -833,11 +833,14 @@ class ReDe(Chunk):
         # identifiers, actually)
         self.zero = self.df.read_uint8()
 
-        # Variable naming is pretty vague here, sorry.
-        self.things = []
-        num_things = self.df.read_varint()
-        for _ in range(num_things):
-            self.things.append(self.df.read_string())
+        # When the game uses this struct, it's *usually* for loot pools
+        # and such, though it also seems to be used to store which crew
+        # members are available at bars.  I'm just calling the var
+        # `items` for simplicity's sake, though.
+        self.items = []
+        num_items = self.df.read_varint()
+        for _ in range(num_items):
+            self.items.append(self.df.read_string())
 
         # On my saves, ranges from 0-4.  Bigger values in general when
         # there are more things in the list, though that's not
@@ -850,8 +853,8 @@ class ReDe(Chunk):
     def _write_to(self, odf):
 
         odf.write_uint8(self.zero)
-        odf.write_varint(len(self.things))
-        for thing in self.things:
+        odf.write_varint(len(self.items))
+        for thing in self.items:
             odf.write_string(thing)
         odf.write_uint32(self.unknown)
 
@@ -860,7 +863,7 @@ class ReDe(Chunk):
         my_dict = {}
         self._json_simple(my_dict, [
             'zero',
-            'things',
+            'items',
             'unknown',
             ])
         return my_dict
@@ -947,7 +950,7 @@ class LootTableStatus(Chunk):
         #    for inner_idx, deck in enumerate(decks):
         #        print(f' - Deck {inner_idx}: {deck.name}')
         #        print(f'    - ReDe:')
-        #        for ready_idx, item_name in enumerate(deck.rede.things):
+        #        for ready_idx, item_name in enumerate(deck.rede.items):
         #            print(f'       {ready_idx}. {item_name}')
         #    print('')
 
@@ -2870,10 +2873,10 @@ class Savefile(Datafile, Serializable):
         # with that for now.
         if self.rede is not None:
             # Inefficient lookup since it's a list
-            if crew_info.name in self.rede.things:
-                self.rede.things.remove(crew_info.name)
+            if crew_info.name in self.rede.items:
+                self.rede.items.remove(crew_info.name)
             # If we empty out the list, we need to do this too
-            if len(self.rede.things) == 0:
+            if len(self.rede.items) == 0:
                 self.rede.unknown = 0
         for shop in self.shops:
             for idx in range(len(shop.available_crew)):
