@@ -91,6 +91,18 @@ class Serializable:
                 target_dict[attr].append(element.to_json(verbose))
 
 
+    def _json_object_dict(self, target_dict, attrs, verbose=False):
+        """
+        Helper method to loop over a bunch of attribute strings,
+        interpreting them as an dictionary of Serializable objects
+        (with strings for names).
+        """
+        for attr in attrs:
+            target_dict[attr] = {}
+            for element_name, element in getattr(self, attr).items():
+                target_dict[attr][element_name] = element.to_json(verbose)
+
+
 class Chunk(Serializable):
     """
     A chunk that we're wrapping with an object.
@@ -2184,6 +2196,146 @@ class CrewController(Chunk):
         return my_dict
 
 
+class QuestData(Chunk):
+    """
+    `Qest` chunk.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'Qest')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.unknown_list_1 = []
+        num_unknown_list_1 = self.df.read_varint()
+        for _ in range(num_unknown_list_1):
+            self.unknown_list_1.append(self.df.read_uint32())
+
+        self.unknown_list_2 = []
+        num_unknown_list_2 = self.df.read_varint()
+        for _ in range(num_unknown_list_2):
+            self.unknown_list_2.append(self.df.read_uint32())
+
+        # Seems to generally be zero?
+        self.unknown_1 = self.df.read_uint32()
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+        odf.write_varint(len(self.unknown_list_1))
+        for number in self.unknown_list_1:
+            odf.write_uint32(number)
+        odf.write_varint(len(self.unknown_list_2))
+        for number in self.unknown_list_2:
+            odf.write_uint32(number)
+        odf.write_uint32(self.unknown_1)
+
+
+    def _to_json(self, verbose=False):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            'unknown_list_1',
+            'unknown_list_2',
+            'unknown_1',
+            ])
+        return my_dict
+
+
+class QuestStatus(Chunk):
+    """
+    `QstS` chunk.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'QstS')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.quests_1 = {}
+        num_quests_1 = self.df.read_varint()
+        for _ in range(num_quests_1):
+            quest_name = self.df.read_string()
+            self.quests_1[quest_name] = QuestData(self.df)
+
+        self.quests_2 = {}
+        num_quests_2 = self.df.read_varint()
+        for _ in range(num_quests_2):
+            quest_name = self.df.read_string()
+            self.quests_2[quest_name] = QuestData(self.df)
+
+        # These are sort of dicts, I guess, but I've seen
+        # at least one example where the same mission shows
+        # up more than once in here, so I'm just storing as
+        # a list of tuples.  I'd have to tuple it up anyway
+        # to get all the other associated info with it.
+        self.quest_tuples = []
+        num_quest_tuples = self.df.read_varint()
+        for _ in range(num_quest_tuples):
+            unknown_prefix = self.df.read_uint8()
+            quest_name = self.df.read_string()
+            quest = QuestData(self.df)
+            unknown_suffix_1 = self.df.read_uint32()
+            unknown_suffix_2 = self.df.read_uint32()
+            self.quest_tuples.append((
+                unknown_prefix,
+                quest_name,
+                quest,
+                unknown_suffix_1,
+                unknown_suffix_2,
+                ))
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+
+        odf.write_varint(len(self.quests_1))
+        for quest_name, quest in self.quests_1.items():
+            odf.write_string(quest_name)
+            quest.write_to(odf)
+
+        odf.write_varint(len(self.quests_2))
+        for quest_name, quest in self.quests_2.items():
+            odf.write_string(quest_name)
+            quest.write_to(odf)
+
+        odf.write_varint(len(self.quest_tuples))
+        for unknown_prefix, quest_name, quest, unknown_suffix_1, unknown_suffix_2 in self.quest_tuples:
+            odf.write_uint8(unknown_prefix)
+            odf.write_string(quest_name)
+            quest.write_to(odf)
+            odf.write_uint32(unknown_suffix_1)
+            odf.write_uint32(unknown_suffix_2)
+
+
+    def _to_json(self, verbose=False):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            ])
+        self._json_object_dict(my_dict, [
+            'quests_1',
+            'quests_2',
+            ], verbose=verbose)
+        tuple_dicts = []
+        for unknown_prefix, quest_name, quest, unknown_suffix_1, unknown_suffix_2 in self.quest_tuples:
+            tuple_dicts.append({
+                'unknown_prefix': unknown_prefix,
+                'quest_name': quest_name,
+                'quest': quest.to_json(verbose=verbose),
+                'unknown_suffix_1': unknown_suffix_1,
+                'unknown_suffix_2': unknown_suffix_2,
+                })
+        my_dict['quest_tuples'] = tuple_dicts
+        return my_dict
+
+
 class UnparsedData:
     """
     So it's unlikely that I'm going to end up decoding the *entire*
@@ -2625,6 +2777,9 @@ class Savefile(Datafile, Serializable):
         # Crew status!
         self.crew = CrewController(self)
 
+        # Quest status
+        self.quests = QuestStatus(self)
+
         # Any remaining data at the end that we're not sure of
         self.remaining = UnparsedData(self)
 
@@ -2773,6 +2928,9 @@ class Savefile(Datafile, Serializable):
         # Crew status
         self.crew.write_to(odf)
 
+        # Quest status
+        self.quests.write_to(odf)
+
         # Any remaining data at the end that we're not sure of
         self.remaining.write_to(odf)
 
@@ -2830,6 +2988,7 @@ class Savefile(Datafile, Serializable):
             ], verbose)
         self._json_object_single(my_dict, [
             'crew',
+            'quests',
             ])
         my_dict['remaining_data'] = '(omitted)'
         return my_dict
