@@ -636,7 +636,6 @@ TODO
   expansion (see above).  Still a pretty rare occurrence, but I don't think I'll
   feel 100% about things until that's done.
 - Would be nice to figure out where Bounty points are stored
-- Store LoDD chunks as a dict, which is what they're presumably meant to be
 
 Format Info
 ===========

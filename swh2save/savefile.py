@@ -1031,16 +1031,14 @@ class LootDeckStatus(Chunk):
         # identifiers, actually)
         self.zero = self.df.read_uint8()
 
-        # TODO: should probably store these as a dict
-        self.decks = []
+        self.decks = {}
         num_decks = self.df.read_varint()
         for _ in range(num_decks):
             deck_name = self.df.read_string()
-            lodd = LootDeckData(self.df)
-            self.decks.append((deck_name, lodd))
+            self.decks[deck_name] = LootDeckData(self.df)
 
         # Debug!
-        #for deck_name, lodd in self.decks:
+        #for deck_name, lodd in self.decks.items():
         #    print(f'Deck: {deck_name}')
         #    for item in lodd.items:
         #        print(f' - {item}')
@@ -1066,7 +1064,7 @@ class LootDeckStatus(Chunk):
 
         odf.write_uint8(self.zero)
         odf.write_varint(len(self.decks))
-        for deck_name, lodd in self.decks:
+        for deck_name, lodd in self.decks.items():
             odf.write_string(deck_name)
             lodd.write_to(odf)
 
@@ -1085,7 +1083,7 @@ class LootDeckStatus(Chunk):
             'zero',
             ])
         my_dict['decks'] = []
-        for deck_name, lodd in self.decks:
+        for deck_name, lodd in self.decks.items():
             my_dict['decks'].append({
                 'name': deck_name,
                 'lodd': lodd.to_json(verbose),
