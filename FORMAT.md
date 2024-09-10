@@ -65,6 +65,12 @@ included what I think the chunks are supposed to imply datawise:
 - Dict of `PBar` (Bar/Shop Market Status)
 - `PeCo` (Persona/Crew Controller)
   - Dict of `Pers` (Persona/Crew status)
+- `QstS` (Quests)
+  - Array of `Qest` (Individual quest data)
+  - Another array of `Qest`
+  - Another more complicated array which includes `Qest` chunks
+- `MiSt`
+  - `MsCD` *(optional)*
 - *(This is where I've stopped; there's at least some quest-related
   chunks afterwards)*
 

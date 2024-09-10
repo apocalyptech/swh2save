@@ -2198,7 +2198,7 @@ class CrewController(Chunk):
 
 class QuestData(Chunk):
     """
-    `Qest` chunk.
+    `Qest` chunk.  Data about a single quest
     """
 
     def __init__(self, df):
@@ -2247,7 +2247,7 @@ class QuestData(Chunk):
 
 class QuestStatus(Chunk):
     """
-    `QstS` chunk.
+    `QstS` chunk.  A collection of quest information.
     """
 
     def __init__(self, df):
@@ -2333,6 +2333,120 @@ class QuestStatus(Chunk):
                 'unknown_suffix_2': unknown_suffix_2,
                 })
         my_dict['quest_tuples'] = tuple_dicts
+        return my_dict
+
+
+class MsCD(Chunk):
+    """
+    `MsCD` chunk.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'MsCD')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.unknown_1 = self.df.read_uint32()
+        self.unknown_2 = self.df.read_uint32()
+        self.unknown_3 = self.df.read_uint32()
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+
+        odf.write_uint32(self.unknown_1)
+        odf.write_uint32(self.unknown_2)
+        odf.write_uint32(self.unknown_3)
+
+    def _to_json(self, verbose=False):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            'unknown_1',
+            'unknown_2',
+            'unknown_3',
+            ])
+        return my_dict
+
+
+class MiSt(Chunk):
+    """
+    `MiSt` chunk.
+    """
+
+    def __init__(self, df):
+        super().__init__(df, 'MiSt')
+
+        # Seems to always be zero (this seems quite common after chunk
+        # identifiers, actually)
+        self.zero = self.df.read_uint8()
+
+        self.unknown_1 = self.df.read_uint32()
+        self.unknown_2 = self.df.read_uint32()
+        self.unknown_3 = self.df.read_uint32()
+        self.unknown_4 = self.df.read_uint32()
+        self.unknown_5 = self.df.read_uint32()
+        self.unknown_6 = self.df.read_uint32()
+        self.unknown_7 = self.df.read_uint32()
+        self.unknown_8 = self.df.read_uint32()
+        self.unknown_9 = self.df.read_uint32()
+        self.unknown_10 = self.df.read_uint32()
+
+        # Not sure if this is a count or a boolean
+        self.has_mscd = self.df.read_uint8()
+        if self.has_mscd > 0:
+            self.unknown_pre_mscd = self.df.read_varint()
+            self.mscd = MsCD(self.df)
+        else:
+            self.unknown_pre_mscd = None
+            self.mscd = None
+
+
+    def _write_to(self, odf):
+
+        odf.write_uint8(self.zero)
+
+        odf.write_uint32(self.unknown_1)
+        odf.write_uint32(self.unknown_2)
+        odf.write_uint32(self.unknown_3)
+        odf.write_uint32(self.unknown_4)
+        odf.write_uint32(self.unknown_5)
+        odf.write_uint32(self.unknown_6)
+        odf.write_uint32(self.unknown_7)
+        odf.write_uint32(self.unknown_8)
+        odf.write_uint32(self.unknown_9)
+        odf.write_uint32(self.unknown_10)
+        odf.write_uint8(self.has_mscd)
+        if self.mscd is not None:
+            odf.write_varint(self.unknown_pre_mscd)
+            self.mscd.write_to(odf)
+
+
+    def _to_json(self, verbose=False):
+        my_dict = {}
+        self._json_simple(my_dict, [
+            'zero',
+            'unknown_1',
+            'unknown_2',
+            'unknown_3',
+            'unknown_4',
+            'unknown_5',
+            'unknown_6',
+            'unknown_7',
+            'unknown_8',
+            'unknown_9',
+            'unknown_10',
+            'has_mscd',
+            ])
+        if self.mscd is not None:
+            self._json_simple(my_dict, [
+                'unknown_pre_mscd',
+                ])
+            self._json_object_single(my_dict, [
+                'mscd',
+                ], verbose=verbose)
         return my_dict
 
 
@@ -2780,6 +2894,9 @@ class Savefile(Datafile, Serializable):
         # Quest status
         self.quests = QuestStatus(self)
 
+        # MiSt
+        self.mist = MiSt(self)
+
         # Any remaining data at the end that we're not sure of
         self.remaining = UnparsedData(self)
 
@@ -2931,6 +3048,9 @@ class Savefile(Datafile, Serializable):
         # Quest status
         self.quests.write_to(odf)
 
+        # MiSt
+        self.mist.write_to(odf)
+
         # Any remaining data at the end that we're not sure of
         self.remaining.write_to(odf)
 
@@ -2989,6 +3109,7 @@ class Savefile(Datafile, Serializable):
         self._json_object_single(my_dict, [
             'crew',
             'quests',
+            'mist',
             ])
         my_dict['remaining_data'] = '(omitted)'
         return my_dict
